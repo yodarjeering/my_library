@@ -2462,6 +2462,11 @@ class LearnQN():
         # 確率を落とす
         elif state=='drop_proba':
             return state_.drop(1,axis=1)
+
+
+        elif state=="open":
+            # 始値は観測できる
+            pass
         
         
         else:
