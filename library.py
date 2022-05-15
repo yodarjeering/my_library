@@ -1,44 +1,25 @@
 import numpy as np
-import math
 import glob
 import matplotlib.pyplot as plt
 from enum import Enum
 import pandas as pd
-import time
-from collections import defaultdict
 from collections import namedtuple
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-import os
-import io
-import re
 from collections import namedtuple
 from collections import deque
 import tensorflow as tf
 from tensorflow.python import keras as K
-from PIL import Image
 import matplotlib.pyplot as plt
 import random
 import xgboost as xgb
-from sklearn.metrics import accuracy_score  
-from tensorflow.python.keras.models import load_model
 import statsmodels.graphics.api as smg
-from statsmodels.graphics.tsaplots import plot_acf
-from scipy import stats
-from scipy.stats import f
-from imblearn.under_sampling import RandomUnderSampler
-from sklearn.metrics import classification_report, accuracy_score
-from sklearn.metrics import average_precision_score
-from sklearn.metrics import classification_report, accuracy_score,roc_curve, roc_auc_score
+from sklearn.metrics import classification_report,roc_auc_score
 import pickle
 import datetime
-from sklearn import preprocessing
 from sklearn.metrics import r2_score
 import copy
 import optuna
-from keras.callbacks import EarlyStopping
-import seaborn as sns
 
 def xgb_pred(x_train, y_train, x_test, y_test):
     param_dist = {'objective':'binary:logistic', 'n_estimators':16,'use_label_encoder':False,
@@ -452,7 +433,7 @@ class XGBSimulation():
         return df_con
     
     
-    def return_grad(self, df, index, gamma=0, delta=0,):
+    def return_grad(self, df, index, gamma=0, delta=0):
         grad_ma_short = df['ma_short'].iloc[index+1] - df['ma_short'].iloc[index]
         grad_ma_long  = df['ma_long'].iloc[index+1] - df['ma_long'].iloc[index]
         strategy = ''
@@ -2182,7 +2163,7 @@ class ImitationTrainer(ValueFunctionTrainer):
         self.validate_reward_log = validate_reward_log
       
 class LearnQN():
-    
+
     
     def __init__(self,lx):
         self.lx = lx
@@ -2511,5 +2492,81 @@ class LearnQN():
         env_check = Environment(s_check,price_check)
         pr_log =  self.QL_agent.return_profit_rate(env_check,wallet)
         return pr_log
+
+class Simulation():
+
+
+    def __init__(self):
+        pass
+
     
+    def make_df_con(self,path_tpx,path_daw):
+        pass
+
     
+    def make_check_data(self,path_tpx,path_daw):
+        pass
+
+    
+    def return_df_con(self,path_tpx,path_daw):
+        pass
+
+
+    def calc_acc(self,acc_df, y_check):
+        pass
+
+
+    def return_split_df(self,df,start_year=2021,end_year=2021,start_month=1,end_month=12):
+        pass
+
+
+    def simulate(self):
+        pass
+
+
+    def return_accuracy(self):
+        pass
+
+
+    def show_result(self):
+        pass
+
+
+    def profit_rate(self):
+        pass
+
+
+class RandomSimulation():
+
+
+    def __init__(self):
+        pass
+
+
+    def simulate(self,is_validate=False):
+        pass
+
+
+    def return_profit_rate(self,wallet=2500):
+        pass
+
+
+    def return_split_df(self,df,start_year=2021,end_year=2021,start_month=1,end_month=12):
+        df = df[df.index.year>=start_year]
+        if start_year <= end_year:
+            df = df[df.index.year<=end_year]
+        if len(set(df.index.year))==1:
+            df = df[df.index.month>=start_month]
+            df = df[df.index.month<=end_month]
+        else:
+            df_tmp = df[df.index.year==start_year]
+            last_year_index = df_tmp[df_tmp.index.month==start_month].index[0]
+#             new_year_index = df[df.index.month==end_year].index[-1]
+            df = df.loc[last_year_index:]
+        return df
+
+class DawSimulation():
+
+
+    def __init__(self):
+        pass    
