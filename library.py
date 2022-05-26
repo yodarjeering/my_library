@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from collections import namedtuple
 from collections import deque
 import tensorflow as tf
-from tensorflow.python import keras as K
+# from tensorflow.python import keras as K
 import matplotlib.pyplot as plt
 import random
 import xgboost as xgb
@@ -1579,13 +1579,13 @@ class FNAgent():
             else:
                 return np.argmax(estimates)
         
-    @classmethod
-    def load(cls, env, model_path, epsilon=0.0001):
-        actions = list(range(len(Action)))
-        agent = cls(epsilon, actions)
-        agent.model = K.models.load_model(model_path)
-        agent.initialized = True
-        return agent
+    # @classmethod
+    # def load(cls, env, model_path, epsilon=0.0001):
+    #     actions = list(range(len(Action)))
+    #     agent = cls(epsilon, actions)
+    #     agent.model = K.models.load_model(model_path)
+    #     agent.initialized = True
+    #     return agent
     
     
     def initialize(self, experiences):
@@ -1606,18 +1606,14 @@ class FNAgent():
 class ValueFunctionAgent(FNAgent):
 
     
-    def save(self, model_path):
-        joblib.dump(self.model, model_path)
-
-    
-    @classmethod
-    def load(cls, env, model_path, epsilon=0.0001):
-        actions = list(range(len(Action)))
-        agent = cls(epsilon, actions)
-        agent.model = joblib.load(model_path)
-        agent.initialized = True
-        agent.is_test = True
-        return agent
+    # @classmethod
+    # def load(cls, env, model_path, epsilon=0.0001):
+    #     actions = list(range(len(Action)))
+    #     agent = cls(epsilon, actions)
+    #     agent.model = joblib.load(model_path)
+    #     agent.initialized = True
+    #     agent.is_test = True
+    #     return agent
 
     
     def initialize(self, experiences):
@@ -2056,6 +2052,8 @@ class ImitationTrainer(ValueFunctionTrainer):
 #         *****estimateds list型だけど大丈夫か？
         self.begin_train(i, agent)
         self.training = True
+        #******** ここ要注意
+        states = np.vstack([e.s for e in self.experiences])
         self.model.partial_fit(states, estimateds)
 
         
