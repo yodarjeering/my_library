@@ -426,8 +426,7 @@ class TechnicalSimulation(Simulation):
         short_line = df_process['ma_short']
         long_line  = df_process['ma_long']
         trade_count = 0
-        self.pr_log = pd.DataFrame()
-        self.pr_log.index = df.index
+        self.pr_log = pd.DataFrame(index=df_process.index[self.ma_short:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
@@ -581,7 +580,7 @@ class XGBSimulation(Simulation):
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
         prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
@@ -777,7 +776,7 @@ class StrategymakerSimulation(XGBSimulation):
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
         prf_list = []
-        self.pr_log = pd.DataFrame()
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log.index = x_check.index
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
@@ -2589,7 +2588,7 @@ class RandomSimulation(Simulation):
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
@@ -2674,8 +2673,6 @@ class RandomSimulation(Simulation):
         except:
             print("no trade")
 
-    def return_profit_rate(self,wallet=2500):
-        pass
 
 
 # alpha, beta よくよく働きを吟味するように
@@ -2732,14 +2729,14 @@ class DawSimulation(Simulation):
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
         prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
         total_eval_price = 0
 
         #********* acc_df?
-        acc_df = pd.DataFrame(index=x_check.index)
+        acc_df = pd.DataFrame(index=x_check.index[:-1])
         acc_df['pred'] = [-1] * len(acc_df)
 
 
