@@ -2684,6 +2684,7 @@ class DawSimulation(Simulation):
 
 
     def __init__(self,alpha=0,beta=0):
+        super(DawSimulation,self).__init__()
         # 買いの閾値をalpha
         self.alpha = alpha
         # 売りの閾値をbeta
