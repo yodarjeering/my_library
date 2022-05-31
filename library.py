@@ -2876,5 +2876,6 @@ class TPXSimulation(Simulation):
         super(TPXSimulation,self).__init__()
 
 
-    def simulate(self):
+    def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
         pass
+        
