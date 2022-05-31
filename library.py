@@ -2736,14 +2736,13 @@ class DawSimulation(Simulation):
                 strategy = self.return_grad(df_con, index=i,gamma=0, delta=0)
             
 
-  
             if dclose.iloc[i+1]>0 and pclose.iloc[i+1]>0:
                 acc_df.iloc[i] = 1
             else: #label == 0
                 acc_df.iloc[i] = 0
                 # x_check['dclose'].iloc[i] は観測可能 
 
-                
+
             if strategy=='reverse':
             
                 if not is_bought:
