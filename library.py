@@ -2736,7 +2736,7 @@ class DawSimulation(Simulation):
         total_eval_price = 0
 
         #********* acc_df?
-        acc_df = pd.DataFrame(index=x_check.index[:-1])
+        acc_df = pd.DataFrame(index=x_check.index)
         acc_df['pred'] = [-1] * len(acc_df)
 
 
