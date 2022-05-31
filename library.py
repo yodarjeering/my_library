@@ -1,3 +1,4 @@
+from importlib.resources import path
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
@@ -1157,9 +1158,14 @@ class MakeTrainData():
 #         Open Close 乖離率
 #         x['d_OC'] = open_/close_
 #     High low 乖離率
+# ATR の計算ミスってた 5/31
         x['d_HL'] = high_/low_
+        df_atr = pd.DataFrame(index=high_.index)
+        df_atr['high_low'] = high_ - low_
+        df_atr['high_close'] = high_ - close_
+        df_atr['close_low_abs'] =  (close_ - low_).abs()
         tr = pd.DataFrame(index=open_.index)
-        tr['TR'] = pd.DataFrame(np.max([high_ - low_,high_ - close_, (close_ - low_).abs()],axis=0))
+        tr['TR'] = df_atr.max(axis=1)
         x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
         x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
 #         ATR乖離率
@@ -1181,7 +1187,7 @@ class MakeTrainData():
         x_check = x
 #         この '4' は　std_l5 など, インデックスをずらす特徴量が, nanになってしまう分の日数を除くためのもの
 # yについても同様
-        x_train = x.iloc[4:int(len(x)*self.test_rate)]
+        x_train = x.iloc[self.ma_short-1:int(len(x)*self.test_rate)]
         x_test  = x.iloc[int(len(x)*self.test_rate):]
 
 
@@ -1195,13 +1201,15 @@ class MakeTrainData():
                     y.append(0)
         
             
-            y_train = y[4:int(len(x)*self.test_rate)]
+            y_train = y[self.ma_short-1:int(len(x)*self.test_rate)]
             y_test  = y[int(len(x)*self.test_rate):]
             return x_train, y_train, x_test, y_test
         
         
         else:
+            x_check = x_check.iloc[self.ma_short-1:]
             chart_ = self.df_con.loc[x_check.index]
+            
             return x_check,chart_
 
 class LearnXGB():
@@ -2679,7 +2687,6 @@ class RandomSimulation(Simulation):
 # まだ仕組み理解してない
 class DawSimulation(Simulation):
 
-
     def __init__(self,alpha=0,beta=0):
         super(DawSimulation,self).__init__()
         # 買いの閾値をalpha
@@ -2860,3 +2867,14 @@ class DawSimulation(Simulation):
                 pl.show()
         except:
             print("no trade")
+
+
+class TPXSimulation(Simulation):
+
+
+    def __init__(self):
+        super(TPXSimulation,self).__init__()
+
+
+    def simulate(self):
+        pass
