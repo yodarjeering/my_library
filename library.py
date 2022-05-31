@@ -12,6 +12,7 @@ import tensorflow as tf
 # from tensorflow.python import keras as K
 import matplotlib.pyplot as plt
 import random
+random.seed(777)
 import xgboost as xgb
 import statsmodels.graphics.api as smg
 from sklearn.metrics import classification_report,roc_auc_score
@@ -236,6 +237,9 @@ class Simulation():
 
     def __init__(self):
         self.model = None
+        self.accuracy_df = None
+        self.trade_log = None
+        self.pr_log = None
 
 
     def return_grad(self, df, index, gamma=0, delta=0):
@@ -338,18 +342,44 @@ class Simulation():
         return df
 
 
+    def return_trade_log(self,prf,trade_count,prf_array,cant_buy):
+        log_dict = {
+            'total_profit':prf,
+            'trade_count':trade_count,
+            'max_profit':prf_array.max(),
+            'min_profit':prf_array.min(),
+            'mean_profit':prf_array.mean(),
+            'cant_buy_count':cant_buy
+            }
+        df = pd.DataFrame(log_dict,index=[1])
+        return df
+
+
+    
+    def get_accuracy(self):
+        return self.accuracy_df
+
+
+    def get_trade_log(self):
+        return self.trade_log
+
+
     def simulate(self):
         pass
 
 
-    def return_profit_rate(self):
-        pass
+# simulate 済みを仮定
+    def return_profit_rate(self,wallet=2500):
+        self.pr_log['reward'] = self.pr_log['reward'].map(lambda x: x/wallet)
+        self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
+        return self.pr_log
 
 
 class TechnicalSimulation(Simulation):
     
     
     def __init__(self,ma_short=5, ma_long=25, hold_day=5, year=2021):
+        super(TechnicalSimulation,self).__init__()
         self.ma_short = ma_short
         self.ma_long = ma_long
         self.hold_day = hold_day
@@ -360,7 +390,8 @@ class TechnicalSimulation(Simulation):
         df_process = df.copy()
         df_process['ma_short'] = df_process['close'].rolling(self.ma_short).mean()
         df_process['ma_long']  = df_process['close'].rolling(self.ma_long).mean()
-        return df_process[df_process.index.year==self.year]
+        # return df_process[df_process.index.year==self.year]
+        return df_process
     
     
     def is_buyable(self, short_line, long_line, index_):
@@ -379,26 +410,23 @@ class TechnicalSimulation(Simulation):
 
         
         
-    def simulate(self,df,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        df_ = self.process(df)
-        df_process = self.return_split_df(df_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+    def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
+        df = self.process(self.make_df_con(path_tpx,path_daw))
+        df_process = self.return_split_df(df,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
         is_bought = False
         hold_count_day = 0
         index_buy = 0
-        index_sell = 0
         pl = PlotTrade(df_process['close'],label='close')
         pl.add_plot(df_process['ma_short'],label='ma_5')
         pl.add_plot(df_process['ma_long'],label='ma_25')   
         prf = 0
+        prf_list = []
         start_time = 0
         end_time = 0
         short_line = df_process['ma_short']
         long_line  = df_process['ma_long']
         trade_count = 0
-        for_plot1=[]
-        for_plot2=[]
-        self.pr_log = pd.DataFrame()
-        self.pr_log.index = df.index
+        self.pr_log = pd.DataFrame(index=df_process.index[self.ma_short:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
@@ -428,6 +456,7 @@ class TechnicalSimulation(Simulation):
                     index_cell = df_process['close'].iloc[i]
                     end_time = df_process.index[i]
                     prf += index_cell - index_buy
+                    prf_list.append(index_cell - index_buy)
                     total_eval_price = prf
                     self.pr_log['reward'].loc[df_process.index[i]] = prf 
                     self.pr_log['eval_reward'].loc[df_process.index[i]] = total_eval_price
@@ -446,28 +475,25 @@ class TechnicalSimulation(Simulation):
             end_time = df_process['close'].index[-1]
             pl.add_span(start_time,end_time)
             eval_price = df_process['close'].iloc[-1] - index_buy
+            prf_list.append(df_process['close'].iloc[-1] - index_buy)
             total_eval_price += eval_price
             self.pr_log['eval_reward'].loc[df_process.index[-1]] = total_eval_price
         
-    
+        prf_array = np.array(prf_list)
+        log = self.return_trade_log(prf,trade_count,prf_array,0)
+        self.trade_log = log
+
         if not is_validate:        
-            print("Total profit {}.".format(prf))
-            print("Trade count",trade_count)
+            print(log)
+            print("")
             pl.show()    
-        
-        
-        
-    def return_profit_rate(self, path_tpx,wallet=2500):
-        df_tpx = DataFramePreProcessing(path_tpx).load_df()
-        self.simulate(df_tpx,is_validate=True)
-        self.pr_log['reward'] = self.pr_log['reward'].map(lambda x: x/wallet)
-        self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
-        return self.pr_log
+          
     
 class XGBSimulation(Simulation):
     
     
     def __init__(self, xgb_model, alpha=0.70):
+        super(XGBSimulation,self).__init__()
         self.xgb_model = xgb_model
         self.alpha = alpha
         self.acc_df = None
@@ -554,7 +580,7 @@ class XGBSimulation(Simulation):
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
         prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
@@ -595,6 +621,7 @@ class XGBSimulation(Simulation):
                 predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
                 current_date = tmp_date
             
+# ここのprob は2クラスうち, 出力の大きいほうのクラスの可能性が代入されている
             if prob > self.alpha:
                 if label == 0:
                     acc_df.iloc[i] = 0
@@ -686,24 +713,25 @@ class XGBSimulation(Simulation):
             
         
         try:
+            if not is_online:
+                df = self.eval_proba(x_check,y_check)
+            else:
+                df = self.calc_acc(acc_df, y_check)
+            self.accuracy_df = df
+            log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+            self.trade_log = log
+
             if not is_validate:
-                print("Total profit :{}".format(prf))
-                print("Trade count  :{}".format(trade_count))
-                print("Max profit   :{}".format(prf_array.max()))
-                print("Min profit   :{}".format(prf_array.min()))
-                print("Mean profit  :{}".format(prf_array.mean()))
-                print("can't buy count",cant_buy)
-                if not is_online:
-                    df = self.eval_proba(x_check,y_check)
-                else:
-                    df = self.calc_acc(acc_df, y_check)
+                print(log)
+                print("")
                 print(df)
                 print("")
                 pl.show()
         except:
             print("no trade")
-        
+
       
+    #  get_accuracy　関数作ったら無用になる
     def return_accuracy(self, path_tpx,path_daw,strategy='normal',is_online=False,start_year=2021,start_month=1):
         self.simulate(path_tpx,path_daw,is_validate=True,strategy=strategy,is_online=is_online)
         y_check = pd.DataFrame(self.y_check)
@@ -721,12 +749,6 @@ class XGBSimulation(Simulation):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)  
         self.simulate(x_check,y_check,strategy)
         
-        
-    def return_profit_rate(self, path_tpx,path_daw,wallet=2500,strategy='normal',is_online=False,start_year=2021,start_month=1):
-        self.simulate(path_tpx,path_daw, is_validate=True,strategy=strategy,is_online=is_online,start_year=start_year,start_month=start_month)
-        self.pr_log['reward'] = self.pr_log['reward'].map(lambda x: x/wallet)
-        self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
-        return self.pr_log
 
 class StrategymakerSimulation(XGBSimulation):
 
@@ -754,7 +776,7 @@ class StrategymakerSimulation(XGBSimulation):
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
         prf_list = []
-        self.pr_log = pd.DataFrame()
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log.index = x_check.index
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
@@ -2514,11 +2536,11 @@ class LearnQN():
         pr_log =  self.QL_agent.return_profit_rate(env_check,wallet)
         return pr_log
 
-
 class RandomSimulation(Simulation):
 
 
     def __init__(self,ma_short=5,ma_long=25,random_num=2):
+        super(RandomSimulation,self).__init__()
         self.ma_short = ma_short
         self.ma_long = ma_long
         self.random_num = random_num
@@ -2555,6 +2577,7 @@ class RandomSimulation(Simulation):
         index_buy = 0
         index_sell = 0
         prf = 0
+        prf_list = []
         trade_count = 0
         df_con = self.return_df_con(path_tpx,path_daw)
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
@@ -2565,13 +2588,11 @@ class RandomSimulation(Simulation):
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
-        prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
         total_eval_price = 0
-
         #********* acc_df?
         acc_df = pd.DataFrame(index=x_check.index)
         acc_df['pred'] = [-1] * len(acc_df)
@@ -2637,22 +2658,21 @@ class RandomSimulation(Simulation):
             
         
         try:
+            df = self.calc_acc(acc_df, y_check)
+            self.accuracy_df = df
+            log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+            self.trade_log = log
+
             if not is_validate:
-                print("Total profit :{}".format(prf))
-                print("Trade count  :{}".format(trade_count))
-                print("Max profit   :{}".format(prf_array.max()))
-                print("Min profit   :{}".format(prf_array.min()))
-                print("Mean profit  :{}".format(prf_array.mean()))
-                print("can't buy count",cant_buy)
-                df = self.calc_acc(acc_df, y_check)
+                # ここも df 化できるように 
+                print(log)
+                print("")
                 print(df)
                 print("")
                 pl.show()
         except:
             print("no trade")
 
-    def return_profit_rate(self,wallet=2500):
-        pass
 
 
 # alpha, beta よくよく働きを吟味するように
@@ -2660,7 +2680,8 @@ class RandomSimulation(Simulation):
 class DawSimulation(Simulation):
 
 
-    def __init__(self,alpha=0.5,beta=0.5):
+    def __init__(self,alpha=0,beta=0):
+        super(DawSimulation,self).__init__()
         # 買いの閾値をalpha
         self.alpha = alpha
         # 売りの閾値をbeta
@@ -2708,14 +2729,14 @@ class DawSimulation(Simulation):
         pl.add_plot(df_con['ma_long'],label='ma_long')
         pl.add_plot(df_con['open'],label='open')
         prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
         total_eval_price = 0
 
         #********* acc_df?
-        acc_df = pd.DataFrame(index=x_check.index)
+        acc_df = pd.DataFrame(index=x_check.index[:-1])
         acc_df['pred'] = [-1] * len(acc_df)
 
 
@@ -2736,7 +2757,9 @@ class DawSimulation(Simulation):
                 strategy = self.return_grad(df_con, index=i,gamma=0, delta=0)
             
 
-            if dclose.iloc[i+1]>0 and pclose.iloc[i+1]>0:
+#   ダウが上がる　-> 日経平均もあがることを仮定している
+# 　つまり, dclose>0 -> label = 1
+            if dclose.iloc[i+1]>0:
                 acc_df.iloc[i] = 1
             else: #label == 0
                 acc_df.iloc[i] = 0
@@ -2824,14 +2847,14 @@ class DawSimulation(Simulation):
             
         
         try:
+            df = self.calc_acc(acc_df, y_check)
+            self.accuracy_df = df
+            log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+            self.trade_log = log
+
             if not is_validate:
-                print("Total profit :{}".format(prf))
-                print("Trade count  :{}".format(trade_count))
-                print("Max profit   :{}".format(prf_array.max()))
-                print("Min profit   :{}".format(prf_array.min()))
-                print("Mean profit  :{}".format(prf_array.mean()))
-                print("can't buy count",cant_buy)
-                df = self.calc_acc(acc_df, y_check)
+                print(log)
+                print("")
                 print(df)
                 print("")
                 pl.show()
