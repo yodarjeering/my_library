@@ -365,6 +365,7 @@ class Simulation():
         return self.trade_log
 
 
+
     def simulate(self):
         pass
 
@@ -1166,14 +1167,16 @@ class MakeTrainData():
         df_atr['close_low_abs'] =  (close_ - low_).abs()
         tr = pd.DataFrame(index=open_.index)
         tr['TR'] = df_atr.max(axis=1)
-        x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
-        x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
-#         ATR乖離率
-        x['d_ATR'] = x['ATR_short']/x['ATR_long']
-        x['ATR_vecs5'] = (x['ATR_short'].diff(5)/1)
-        x['ATR_vecs1'] = (x['ATR_short'].diff(1)/1)
-        x['ATR_vecl5'] = (x['ATR_long'].diff(5)/1)
-        x['ATR_vecl1'] = (x['ATR_long'].diff(1)/1)
+
+
+#         x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
+#         x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
+# #         ATR乖離率
+#         x['d_ATR'] = x['ATR_short']/x['ATR_long']
+#         x['ATR_vecs5'] = (x['ATR_short'].diff(5)/1)
+#         x['ATR_vecs1'] = (x['ATR_short'].diff(1)/1)
+#         x['ATR_vecl5'] = (x['ATR_long'].diff(5)/1)
+#         x['ATR_vecl1'] = (x['ATR_long'].diff(1)/1)
         
         today_close = df_con['close']
         yesterday_close = df_con['close'].iloc[:-1]
@@ -1287,14 +1290,15 @@ class LearnXGB():
         return state_, chart_
     
     
-    def predict_tomorrow(self, path_tpx, path_daw, alpha=0.5, strategy='normal', is_online=False, start_year=2021,start_month=1,end_month=12,is_observed=False):
-        sl = XGBSimulation(self.model,alpha=alpha)
-        sl.simulate(path_tpx,path_daw,strategy=strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
+    def predict_tomorrow(self, path_tpx, path_daw, alpha=0.5, strategy='normal', is_online=False, start_year=2021,start_month=1,end_month=12,is_observed=False,is_validate=False):
+        xl = XGBSimulation(self.model,alpha=alpha)
+        xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
+        self.xl = xl
         df_con = self.make_df_con(path_tpx,path_daw)
         mk = MakeTrainData(df_con)
         x_check, chart_ = mk.make_data(is_check=True)
         tomorrow_predict = self.model.predict_proba(x_check)
-        print("is_bought",sl.is_bought)
+        print("is_bought",xl.is_bought)
         print("df_con in predict_tomorrow",df_con.index[-1])
         print("today :",x_check.index[-1])
         print("tomorrow UP possibility", tomorrow_predict[-1,1])
@@ -2877,5 +2881,32 @@ class TPXSimulation(Simulation):
 
 
     def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        pass
+        df = self.make_df_con(path_tpx,path_daw)
+        x_check = self.return_split_df(df,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        length = len(x_check)
+        pl = PlotTrade(x_check['close'],label='close')
+        prf_list = []
         
+
+
+        start_time = x_check.index[0]
+        end_time = x_check.index[-1]
+        pl.add_span(start_time,end_time)
+        prf = x_check['close'].loc[x_check.index[-1]] - x_check['close'].loc[x_check.index[0]]
+        index_buy = x_check['close'].iloc[0]
+        prf_list_diff = x_check['close'].map(lambda x : x - index_buy).diff().fillna(0).tolist()
+        prf_list = x_check['close'].map(lambda x : x - index_buy).tolist()
+        prf_array = np.array(prf_list)
+        prf_array_diff = np.array(prf_list_diff)
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
+        self.pr_log['reward'] = prf_list[:-1]
+        self.pr_log['eval_reward'] = prf_list[:-1]
+        log = self.return_trade_log(prf,length-1,prf_array_diff,0)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            pl.show()
+
+
