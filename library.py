@@ -22,6 +22,8 @@ import datetime
 from sklearn.metrics import r2_score
 import copy
 import optuna
+from sklearn import tree
+from sklearn.ensemble import RandomForestClassifier
 
 def xgb_pred(x_train, y_train, x_test, y_test):
     param_dist = {'objective':'binary:logistic', 'n_estimators':16,'use_label_encoder':False,
@@ -1302,7 +1304,72 @@ class LearnXGB():
         print("df_con in predict_tomorrow",df_con.index[-1])
         print("today :",x_check.index[-1])
         print("tomorrow UP possibility", tomorrow_predict[-1,1])
+
+class LearnTree(LearnXGB):
+    
+    
+    def __init__(self):
+        super(LearnTree,self).__init__()
+        self.model : tree.DecisionTreeClassifier() = None
+        self.x_test = None
+    
+    
+    def learn_tree(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
+        x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
+        tree_model = tree.DecisionTreeClassifier()
+        hr_pred = tree_model.fit(x_train.astype(float), np.array(y_train)).predict(x_test.astype(float))
+        print("---------------------")
+        y_proba_train = tree_model.predict_proba(x_train)[:,1]
+        y_proba = tree_model.predict_proba(x_test)[:,1]
+        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+        print('AUC test :',roc_auc_score(y_test,y_proba))
+        print(classification_report(np.array(y_test), hr_pred))
+        self.model = tree_model
         
+
+class LearnRandomForest(LearnXGB):
+    
+    
+    def __init__(self):
+        super(LearnRandomForest,self).__init__()
+        self.model : RandomForestClassifier = None
+        self.x_test = None
+    
+    
+    def learn_forest(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
+        x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
+        tree_model = self.model = RandomForestClassifier(max_depth=2, random_state=0)
+        hr_pred = tree_model.fit(x_train.astype(float), np.array(y_train)).predict(x_test.astype(float))
+        print("---------------------")
+        y_proba_train = tree_model.predict_proba(x_train)[:,1]
+        y_proba = tree_model.predict_proba(x_test)[:,1]
+        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+        print('AUC test :',roc_auc_score(y_test,y_proba))
+        print(classification_report(np.array(y_test), hr_pred))
+        self.model = tree_model
+
+class LearnLogisticRegressor(LearnXGB):
+    
+    
+    def __init__(self):
+        super(LearnLogisticRegressor,self).__init__()
+        self.model : LogisticRegression = None
+        self.x_test = None
+    
+    
+    def learn_logistic(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
+        x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
+        logistic_model = LogisticRegression(max_iter=2000)
+        hr_pred = logistic_model.fit(x_train.astype(float), np.array(y_train)).predict(x_test.astype(float))
+        print("---------------------")
+        y_proba_train = logistic_model.predict_proba(x_train)[:,1]
+        y_proba = logistic_model.predict_proba(x_test)[:,1]
+        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+        print('AUC test :',roc_auc_score(y_test,y_proba))
+        print(classification_report(np.array(y_test), hr_pred))
+        self.model = logistic_model
+        
+
 class StrategyMaker():
     
     
