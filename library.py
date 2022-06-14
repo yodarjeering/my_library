@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import random
 random.seed(777)
 import xgboost as xgb
-import statsmodels.graphics.api as smg
 from sklearn.metrics import classification_report,roc_auc_score
 import pickle
 import datetime
@@ -24,8 +23,11 @@ import copy
 import optuna
 from sklearn import tree
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
+import seaborn as sns
+from sklearn.decomposition import PCA
 
 
 def xgb_pred(x_train, y_train, x_test, y_test):
@@ -165,6 +167,28 @@ def load_csv(load_path):
     df = pd.read_csv(load_path, index_col=0)
     return df
 
+def standarize(df):
+    # ddof = 0 : 分散
+    # ddof = 1 : 不偏分散
+    df = (df - df.mean())/df.std(ddof=0)
+    return df
+
+def make_data(x_,y_):
+    train = pd.concat([y_,x_],axis = 1,join='inner').astype(float)
+    x_ = train[train.columns[1:]]
+    y_ = train[train.columns[0]]
+    return x_,y_
+
+def inverse(after,std_,mean_):
+    after = after*std_ + mean_
+    return after 
+
+def show_corr(x_):
+    x_corr = x_.corr()
+    fig, ax = plt.subplots(figsize=(20, 20)) 
+    sns.heatmap(x_corr, square=True, vmax=1, vmin=-1, center=0)
+    plt.plot()
+
 Experience = namedtuple("Experience", ["s","a","r","n_s","n_a","d"])
 
 class DataFramePreProcessing():
@@ -237,7 +261,6 @@ class ValidatePlot(PlotTrade):
     def show(self):
         pass
     
-
 class Simulation():
 
 
@@ -381,7 +404,6 @@ class Simulation():
         self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
         return self.pr_log
 
-
 class TechnicalSimulation(Simulation):
     
     
@@ -494,8 +516,7 @@ class TechnicalSimulation(Simulation):
             print(log)
             print("")
             pl.show()    
-          
-    
+             
 class XGBSimulation(Simulation):
     
     
@@ -756,7 +777,6 @@ class XGBSimulation(Simulation):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)  
         self.simulate(x_check,y_check,strategy)
         
-
 class StrategymakerSimulation(XGBSimulation):
 
 
@@ -1348,7 +1368,6 @@ class LearnTree(LearnXGB):
         print(classification_report(np.array(y_test), hr_pred))
         self.model = tree_model
         
-
 class LearnRandomForest(LearnXGB):
     
     
@@ -1390,8 +1409,57 @@ class LearnLogisticRegressor(LearnXGB):
         print('AUC test :',roc_auc_score(y_test,y_proba))
         print(classification_report(np.array(y_test), hr_pred))
         self.model = logistic_model
-        
 
+class LearnLinearRegression(LearnXGB):
+
+
+    def __init__(self):
+        super(LearnLinearRegression,self).__init__()
+        self.model : LinearRegression = None
+        self.x_test = None
+        self.x_val = None
+        self.y_val = None
+
+    
+    def make_regression_data(self,path_tpx,path_daw,test_rate=0.8):
+        df = self.make_df_con(path_tpx,path_daw)
+        x_train,_,x_test,_ = self.make_xgb_data(path_tpx,path_daw,test_rate=test_rate)
+        x_train, y_train = make_data(x_train,df['close'])
+        x_test,y_test = make_data(x_test,df['close'])
+        x_train = standarize(x_train)
+        x_test = standarize(x_test)
+        y_train = standarize(y_train)
+        y_test = standarize(y_test)
+        self.x_val = x_test
+        self.y_val = y_test
+        return x_train,y_train,x_test,y_test
+
+
+    def learn_linear_regression(self,path_tpx,path_daw,test_rate=0.8):
+        x_train,y_train,x_test,y_test = self.make_regression_data(path_tpx,path_daw,test_rate=test_rate)
+        lr = LinearRegression()
+        lr.fit(x_train,y_train)
+        self.model = lr
+        y_pred = lr.predict(x_test)
+        print("True")
+        plt.plot(y_test.iloc[:20])
+        print("Predoct")
+        plt.plot(y_pred[:20])
+
+
+    def show_model_summary(self,):
+        x_add_const = sm.add_constant(self.x_val)
+        model_sm = sm.OLS(self.y_val, x_add_const).fit()
+        print(model_sm.summary())
+
+class analyzePCA():
+
+
+    def __init__(self):
+        self.pca : PCA = None
+
+        
+            
 class StrategyMaker():
     
     
@@ -2774,8 +2842,6 @@ class RandomSimulation(Simulation):
         except:
             print("no trade")
 
-
-
 # alpha, beta よくよく働きを吟味するように
 # まだ仕組み理解してない
 class DawSimulation(Simulation):
@@ -2960,7 +3026,6 @@ class DawSimulation(Simulation):
                 pl.show()
         except:
             print("no trade")
-
 
 class TPXSimulation(Simulation):
 
