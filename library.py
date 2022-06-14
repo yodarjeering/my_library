@@ -24,6 +24,9 @@ import copy
 import optuna
 from sklearn import tree
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
+
 
 def xgb_pred(x_train, y_train, x_test, y_test):
     param_dist = {'objective':'binary:logistic', 'n_estimators':16,'use_label_encoder':False,
@@ -972,18 +975,18 @@ class MakeTrainData():
         dawp_5 = df_con['dclose'].iloc[:-5]
         dawp_5.index = df_con.index[5:]
         x['dawp_5'] = dawp_5
-#         dawp_4 = df_con['dclose'].iloc[:-4]
-#         dawp_4.index = df_con.index[4:]
-#         x['dawp_4'] = dawp_4
-#         dawp_3 = df_con['dclose'].iloc[:-3]
-#         dawp_3.index = df_con.index[3:]
-#         x['dawp_3'] = dawp_3
-#         dawp_2 = df_con['dclose'].iloc[:-2]
-#         dawp_2.index = df_con.index[2:]
-#         x['dawp_2'] = dawp_2
-#         dawp_1 = df_con['dclose'].iloc[:-1]
-#         dawp_1.index = df_con.index[1:]
-#         x['dawp_1'] = dawp_1
+        # dawp_4 = df_con['dclose'].iloc[:-4]
+        # dawp_4.index = df_con.index[4:]
+        # x['dawp_4'] = dawp_4
+        # dawp_3 = df_con['dclose'].iloc[:-3]
+        # dawp_3.index = df_con.index[3:]
+        # x['dawp_3'] = dawp_3
+        # dawp_2 = df_con['dclose'].iloc[:-2]
+        # dawp_2.index = df_con.index[2:]
+        # x['dawp_2'] = dawp_2
+        # dawp_1 = df_con['dclose'].iloc[:-1]
+        # dawp_1.index = df_con.index[1:]
+        # x['dawp_1'] = dawp_1
         dawp_0 = df_con['dclose']
         x['dawp_0'] = dawp_0
         
@@ -991,19 +994,19 @@ class MakeTrainData():
         nikkeip_5.index = df_con.index[5:]
         x['nikkeip_5'] = nikkeip_5
         
-#         nikkeip_4 = df_con['pclose'].iloc[:-4]
-#         nikkeip_4.index = df_con.index[4:]
-#         x['nikkeip_4'] = nikkeip_4
+        # nikkeip_4 = df_con['pclose'].iloc[:-4]
+        # nikkeip_4.index = df_con.index[4:]
+        # x['nikkeip_4'] = nikkeip_4
         
-#         nikkeip_3 = df_con['pclose'].iloc[:-3]
-#         nikkeip_3.index = df_con.index[3:]
-#         x['nikkeip_3'] = nikkeip_3 
-#         nikkeip_2 = df_con['pclose'].iloc[:-2]
-#         nikkeip_2.index = df_con.index[2:]
-#         x['nikkeip_2'] = nikkeip_2
-#         nikkeip_1 = df_con['pclose'].iloc[:-1]
-#         nikkeip_1.index = df_con.index[1:]
-#         x['nikkeip_1'] = nikkeip_1
+        # nikkeip_3 = df_con['pclose'].iloc[:-3]
+        # nikkeip_3.index = df_con.index[3:]
+        # x['nikkeip_3'] = nikkeip_3 
+        # nikkeip_2 = df_con['pclose'].iloc[:-2]
+        # nikkeip_2.index = df_con.index[2:]
+        # x['nikkeip_2'] = nikkeip_2
+        # nikkeip_1 = df_con['pclose'].iloc[:-1]
+        # nikkeip_1.index = df_con.index[1:]
+        # x['nikkeip_1'] = nikkeip_1
         nikkeip_0 = df_con['pclose']
         x['nikkeip_0'] = nikkeip_0
         
@@ -1019,18 +1022,18 @@ class MakeTrainData():
         std_s_5 = df_ma['std_short'].iloc[:-5]
         std_s_5.index = df_ma.index[5:]
         x['std_s_5'] = std_s_5
-#         std_s_4 = df_ma['std_short'].iloc[:-4]
-#         std_s_4.index = df_ma.index[4:]
-#         x['std_s_4'] = std_s_4
-#         std_s_3 = df_ma['std_short'].iloc[:-3]
-#         std_s_3.index = df_ma.index[3:]
-#         x['std_s_3'] = std_s_3
-#         std_s_2 = df_ma['std_short'].iloc[:-2]
-#         std_s_2.index = df_ma.index[2:]
-#         x['std_s_2'] = std_s_2
-#         std_s_1 = df_ma['std_short'].iloc[:-1]
-#         std_s_1.index = df_ma.index[1:]
-#         x['std_s_1'] = std_s_1
+        # std_s_4 = df_ma['std_short'].iloc[:-4]
+        # std_s_4.index = df_ma.index[4:]
+        # x['std_s_4'] = std_s_4
+        # std_s_3 = df_ma['std_short'].iloc[:-3]
+        # std_s_3.index = df_ma.index[3:]
+        # x['std_s_3'] = std_s_3
+        # std_s_2 = df_ma['std_short'].iloc[:-2]
+        # std_s_2.index = df_ma.index[2:]
+        # x['std_s_2'] = std_s_2
+        # std_s_1 = df_ma['std_short'].iloc[:-1]
+        # std_s_1.index = df_ma.index[1:]
+        # x['std_s_1'] = std_s_1
         std_s_0 = df_ma['std_short']
         x['std_s_0'] = std_s_0
         
@@ -1038,42 +1041,42 @@ class MakeTrainData():
         std_l_5 = df_ma['std_long'].iloc[:-5]
         std_l_5.index = df_ma.index[5:]
         x['std_l_5'] = std_l_5
-#         std_l_4 = df_ma['std_long'].iloc[:-4]
-#         std_l_4.index = df_ma.index[4:]
-#         x['std_l_4'] = std_l_4
-#         std_l_3 = df_ma['std_long'].iloc[:-3]
-#         std_l_3.index = df_ma.index[3:]
-#         x['std_l_3'] = std_l_3
-#         std_l_2 = df_ma['std_long'].iloc[:-2]
-#         std_l_2.index = df_ma.index[2:]
-#         x['std_l_2'] = std_l_2
-#         std_l_1 = df_ma['std_long'].iloc[:-1]
-#         std_l_1.index = df_ma.index[1:]
-#         x['std_l_1'] = std_l_1
+        # std_l_4 = df_ma['std_long'].iloc[:-4]
+        # std_l_4.index = df_ma.index[4:]
+        # x['std_l_4'] = std_l_4
+        # std_l_3 = df_ma['std_long'].iloc[:-3]
+        # std_l_3.index = df_ma.index[3:]
+        # x['std_l_3'] = std_l_3
+        # std_l_2 = df_ma['std_long'].iloc[:-2]
+        # std_l_2.index = df_ma.index[2:]
+        # x['std_l_2'] = std_l_2
+        # std_l_1 = df_ma['std_long'].iloc[:-1]
+        # std_l_1.index = df_ma.index[1:]
+        # x['std_l_1'] = std_l_1
         std_l_0 = df_ma['std_long']
         x['std_l_0'] = std_l_0
         
 # このままの変換だと, 相関しすぎているので, 変化率 or 基準の値で割るなど, 操作が必要
         vec_s_5 = (df_ma['ma_short'].diff(5)/5)
         x['vec_s_5'] = vec_s_5
-#         vec_s_4 = (df_ma['ma_short'].diff(4)/4)
-#         x['vec_s_4'] = vec_s_4
-#         vec_s_3 = (df_ma['ma_short'].diff(3)/3)
-#         x['vec_s_3'] = vec_s_3
-#         vec_s_2 = (df_ma['ma_short'].diff(2)/2)
-#         x['vec_s_2'] = vec_s_2
+        # vec_s_4 = (df_ma['ma_short'].diff(4)/4)
+        # x['vec_s_4'] = vec_s_4
+        # vec_s_3 = (df_ma['ma_short'].diff(3)/3)
+        # x['vec_s_3'] = vec_s_3
+        # vec_s_2 = (df_ma['ma_short'].diff(2)/2)
+        # x['vec_s_2'] = vec_s_2
         vec_s_1 = (df_ma['ma_short'].diff(1)/1)
         x['vec_s_1'] = vec_s_1
         
     
         vec_l_5 = (df_ma['ma_long'].diff(5)/5)
         x['vec_l_5'] = vec_l_5
-#         vec_l_4 = (df_ma['ma_long'].diff(4)/4)
-#         x['vec_l_4'] = vec_l_4
-#         vec_l_3 = (df_ma['ma_long'].diff(3)/3)
-#         x['vec_l_3'] = vec_l_3
-#         vec_l_2 = (df_ma['ma_long'].diff(2)/2)
-#         x['vec_l_2'] = vec_l_2
+        # vec_l_4 = (df_ma['ma_long'].diff(4)/4)
+        # x['vec_l_4'] = vec_l_4
+        # vec_l_3 = (df_ma['ma_long'].diff(3)/3)
+        # x['vec_l_3'] = vec_l_3
+        # vec_l_2 = (df_ma['ma_long'].diff(2)/2)
+        # x['vec_l_2'] = vec_l_2
         vec_l_1 = (df_ma['ma_long'].diff(1)/1)
         x['vec_l_1'] = vec_l_1
         
@@ -1083,24 +1086,24 @@ class MakeTrainData():
 
         emavec_s_5 = (df_ma['ema_short'].diff(5)/5)
         x['emavec_s_5'] = emavec_s_5
-#         emavec_s_4 = (df_ma['ema_short'].diff(4)/4)
-#         x['emavec_s_4'] = emavec_s_4
-#         emavec_s_3 = (df_ma['ema_short'].diff(3)/3)
-#         x['emavec_s_3'] = emavec_s_3
-#         emavec_s_2 = (df_ma['ema_short'].diff(2)/2)
-#         x['emavec_s_2'] = emavec_s_2
+        # emavec_s_4 = (df_ma['ema_short'].diff(4)/4)
+        # x['emavec_s_4'] = emavec_s_4
+        # emavec_s_3 = (df_ma['ema_short'].diff(3)/3)
+        # x['emavec_s_3'] = emavec_s_3
+        # emavec_s_2 = (df_ma['ema_short'].diff(2)/2)
+        # x['emavec_s_2'] = emavec_s_2
         emavec_s_1 = (df_ma['ema_short'].diff(1)/1)
         emavec_s_1.index = df_ma.index
         x['emavec_s_1'] = emavec_s_1
     
         emavec_l_5 = (df_ma['ema_long'].diff(5)/5)
         x['emavec_l_5'] = emavec_l_5
-#         emavec_l_4 = (df_ma['ema_long'].diff(4)/4)
-#         x['emavec_l_4'] = emavec_l_4
-#         emavec_l_3 = (df_ma['ema_long'].diff(3)/3)
-#         x['emavec_l_3'] = emavec_l_3
-#         emavec_l_2 = (df_ma['ema_long'].diff(2)/2)
-#         x['emavec_l_2'] = emavec_l_2
+        # emavec_l_4 = (df_ma['ema_long'].diff(4)/4)
+        # x['emavec_l_4'] = emavec_l_4
+        # emavec_l_3 = (df_ma['ema_long'].diff(3)/3)
+        # x['emavec_l_3'] = emavec_l_3
+        # emavec_l_2 = (df_ma['ema_long'].diff(2)/2)
+        # x['emavec_l_2'] = emavec_l_2
         emavec_l_1 = (df_ma['ema_long'].diff(1)/1)
         x['emavec_l_1'] = emavec_l_1
 
@@ -1159,7 +1162,7 @@ class MakeTrainData():
         low_ = df_con['low']
         close_ = df_con['close']
 #         Open Close 乖離率
-#         x['d_OC'] = open_/close_
+        x['d_OC'] = open_/close_
 #     High low 乖離率
 # ATR の計算ミスってた 5/31
         x['d_HL'] = high_/low_
@@ -1171,20 +1174,20 @@ class MakeTrainData():
         tr['TR'] = df_atr.max(axis=1)
 
 
-#         x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
-#         x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
-# #         ATR乖離率
-#         x['d_ATR'] = x['ATR_short']/x['ATR_long']
-#         x['ATR_vecs5'] = (x['ATR_short'].diff(5)/1)
-#         x['ATR_vecs1'] = (x['ATR_short'].diff(1)/1)
-#         x['ATR_vecl5'] = (x['ATR_long'].diff(5)/1)
-#         x['ATR_vecl1'] = (x['ATR_long'].diff(1)/1)
+        x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
+        x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
+#         ATR乖離率
+        x['d_ATR'] = x['ATR_short']/x['ATR_long']
+        x['ATR_vecs5'] = (x['ATR_short'].diff(5)/1)
+        x['ATR_vecs1'] = (x['ATR_short'].diff(1)/1)
+        x['ATR_vecl5'] = (x['ATR_long'].diff(5)/1)
+        x['ATR_vecl1'] = (x['ATR_long'].diff(1)/1)
         
         today_close = df_con['close']
         yesterday_close = df_con['close'].iloc[:-1]
         yesterday_close.index = df_con.index[1:]
 #         騰落率
-#         x['RAF'] =  (today_close/yesterday_close -1)
+        x['RAF'] =  (today_close/yesterday_close -1)
 
         
 #         coef_short tmp1
@@ -1228,6 +1231,25 @@ class LearnXGB():
     def learn_xgb(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
         
+        if param_dist=='None':
+#             Grid search で求めたパラメタ 2021/11/21
+            param_dist = { 'n_estimators':16,'use_label_encoder':False,
+                 'max_depth':4}
+
+        xgb_model = xgb.XGBClassifier(**param_dist)
+        hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
+        print("---------------------")
+        y_proba_train = xgb_model.predict_proba(x_train)[:,1]
+        y_proba = xgb_model.predict_proba(x_test)[:,1]
+        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+        print('AUC test :',roc_auc_score(y_test,y_proba))
+        print(classification_report(np.array(y_test), hr_pred))
+        _, ax = plt.subplots(figsize=(12, 10))
+        xgb.plot_importance(xgb_model,ax=ax) 
+        self.model = xgb_model
+
+
+    def learn_xgb2(self,x_train,y_train,x_test,y_test,param_dist='None'):
         if param_dist=='None':
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 'n_estimators':16,'use_label_encoder':False,
@@ -1316,7 +1338,7 @@ class LearnTree(LearnXGB):
     
     def learn_tree(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
-        tree_model = tree.DecisionTreeClassifier()
+        tree_model = tree.DecisionTreeClassifier(random_state=0)
         hr_pred = tree_model.fit(x_train.astype(float), np.array(y_train)).predict(x_test.astype(float))
         print("---------------------")
         y_proba_train = tree_model.predict_proba(x_train)[:,1]
