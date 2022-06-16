@@ -1,4 +1,3 @@
-from importlib.resources import path
 from re import X
 import numpy as np
 import glob
@@ -6,7 +5,6 @@ import matplotlib.pyplot as plt
 from enum import Enum
 import pandas as pd
 from collections import namedtuple
-from sklearn.datasets import load_files
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from collections import namedtuple
@@ -16,7 +14,6 @@ import tensorflow as tf
 # from tensorflow.python import keras as K
 import matplotlib.pyplot as plt
 import random
-from torch import svd
 random.seed(777)
 import xgboost as xgb
 from sklearn.metrics import classification_report,roc_auc_score
@@ -151,9 +148,6 @@ def grid_search(x_train,y_train,x_test,y_test):
     study.optimize(optimizer, n_trials=500)
     print(study.best_params)
     print(study.best_value)
-
-def sigmoid(x):
-    return 1 / 1 + np.exp(-x)  
 
 def softmax(x):
     return np.exp(x)/np.sum(np.exp(x))
@@ -607,10 +601,10 @@ class XGBSimulation(Simulation):
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:]
         df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        self.df_con = df_con
         pl = PlotTrade(df_con['close'],label='close')
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
-        pl.add_plot(df_con['open'],label='open')
         prf_list = []
         self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
@@ -677,7 +671,6 @@ class XGBSimulation(Simulation):
                         index_buy = df_con['close'].loc[x_check.index[i+1]]
                         start_time = x_check.index[i+1]
                         is_bought = True
-                        
 #                     
                 else:
     #                 上がって売り
@@ -1257,8 +1250,10 @@ class LearnXGB():
         
         if param_dist=='None':
 #             Grid search で求めたパラメタ 2021/11/21
-            param_dist = { 'n_estimators':16,'use_label_encoder':False,
-                 'max_depth':4}
+            param_dist = { 
+            'n_estimators':16,
+            # 'use_label_encoder':False,
+            'max_depth':4}
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
@@ -1276,8 +1271,11 @@ class LearnXGB():
     def learn_xgb2(self,x_train,y_train,x_test,y_test,param_dist='None'):
         if param_dist=='None':
 #             Grid search で求めたパラメタ 2021/11/21
-            param_dist = { 'n_estimators':16,'use_label_encoder':False,
-                 'max_depth':4}
+            param_dist = { 
+                'n_estimators':16,
+                # 'use_label_encoder':False,
+                'max_depth':4
+                 }
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
@@ -1338,18 +1336,46 @@ class LearnXGB():
         return state_, chart_
     
     
-    def predict_tomorrow(self, path_tpx, path_daw, alpha=0.5, strategy='normal', is_online=False, start_year=2021,start_month=1,end_month=12,is_observed=False,is_validate=False):
+    def predict_tomorrow(self, path_tpx, path_daw, alpha=0.5, strategy='normal', is_online=False, is_valiable_strategy=False,start_year=2021,start_month=1,end_month=12,is_observed=False,is_validate=False):
         xl = XGBSimulation(self.model,alpha=alpha)
-        xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
+        xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,is_variable_strategy=is_valiable_strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
         self.xl = xl
         df_con = self.make_df_con(path_tpx,path_daw)
         mk = MakeTrainData(df_con)
         x_check, chart_ = mk.make_data(is_check=True)
         tomorrow_predict = self.model.predict_proba(x_check)
+        label = self.get_tomorrow_label(tomorrow_predict,strategy, is_valiable_strategy)
         print("is_bought",xl.is_bought)
         print("df_con in predict_tomorrow",df_con.index[-1])
         print("today :",x_check.index[-1])
         print("tomorrow UP possibility", tomorrow_predict[-1,1])
+        print("label :",label)
+
+
+    def get_tomorrow_label(self, tomorrow_predict,strategy, is_valiable_strategy):
+        label = "STAY"
+        df_con = self.xl.df_con
+        if is_valiable_strategy:
+            i = len(df_con)-2
+            strategy = self.xl.return_grad(df_con, index=i,gamma=0, delta=0)
+        
+        if strategy == 'normal':
+            if tomorrow_predict[-1,1] > self.xl.alpha:
+                label = "BUY"
+            elif 1-tomorrow_predict[-1,1] > self.xl.alpha:
+                label =  "SELL"
+            else:
+                label = "STAY"
+        
+        elif strategy == 'reverse':
+            if 1-tomorrow_predict[-1,1] > self.xl.alpha:
+                label = "BUY"
+            elif tomorrow_predict[-1,1] > self.xl.alpha:
+                label = "SELL"
+            else:
+                label = "STAY"
+
+        return label
 
 class LearnTree(LearnXGB):
     
@@ -1423,9 +1449,12 @@ class LearnLinearRegression(LearnXGB):
         self.x_test = None
         self.x_val = None
         self.y_val = None
+        plt.clf()
 
-    
-    def make_regression_data(self,path_tpx,path_daw,test_rate=0.8):
+    # データリーク確認
+    # 直すように
+    # diff_date : 何日後の予測をするか指定するパラメタ
+    def make_regression_data(self,path_tpx,path_daw,test_rate=0.8,diff_date=5):
         df = self.make_df_con(path_tpx,path_daw)
         x_train,_,x_test,_ = self.make_xgb_data(path_tpx,path_daw,test_rate=test_rate)
         x_train, y_train = make_data(x_train,df['close'])
@@ -1434,9 +1463,14 @@ class LearnLinearRegression(LearnXGB):
         x_test = standarize(x_test)
         y_train = standarize(y_train)
         y_test = standarize(y_test)
+        x_train = x_train.iloc[:-diff_date]
+        y_train = y_train.iloc[diff_date:]
+        x_test = x_test.iloc[:-diff_date]
+        y_test = y_test.iloc[diff_date:]
         self.x_val = x_test
         self.y_val = y_test
         return x_train,y_train,x_test,y_test
+
 
 
     def learn_linear_regression(self,path_tpx,path_daw,test_rate=0.8):
@@ -1447,11 +1481,14 @@ class LearnLinearRegression(LearnXGB):
         y_pred = lr.predict(x_test)
         print("True")
         plt.plot(y_test.iloc[:20])
-        print("Predoct")
+        plt.show()
+        print("Predict")
         plt.plot(y_pred[:20])
+        plt.grid()
+        plt.show()
 
 
-    def show_model_summary(self,):
+    def show_model_summary(self):
         x_add_const = sm.add_constant(self.x_val)
         model_sm = sm.OLS(self.y_val, x_add_const).fit()
         print(model_sm.summary())
