@@ -9,9 +9,6 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from collections import namedtuple
 from collections import deque
-from sklearn.svm import SVC
-import tensorflow as tf
-# from tensorflow.python import keras as K
 import matplotlib.pyplot as plt
 import random
 random.seed(777)
@@ -29,6 +26,8 @@ from sklearn.linear_model import LinearRegression
 import statsmodels.api as sm
 import seaborn as sns
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn import preprocessing
 
 
 def xgb_pred(x_train, y_train, x_test, y_test):
@@ -187,6 +186,36 @@ def show_corr(x_):
     sns.heatmap(x_corr, square=True, vmax=1, vmin=-1, center=0)
     plt.plot()
 
+def return_corr(df,year=2021):
+    x = df_con[df_con.index.year==year]['daw_close'].values
+    y = df_con[df_con.index.year==year]['close'].values
+    corr = np.corrcoef(x,y)
+    return corr
+
+def return_strong_corr(x_):
+    strong_corr = []
+    x_corr = x_.corr()
+    for idx in x_corr.index:
+        for col in x_corr.columns:
+            if idx == col:
+                continue
+            else:
+                corr = x_corr.loc[idx][col]
+                if abs(corr)>=0.8:
+                    strong_corr.append([idx,col])
+    return strong_corr
+
+def process_kawase(path_kawase,df_con):
+    df_kawase = pd.read_csv(path_kawase, index_col=0,encoding='Shift_JIS')
+    column_name = df_kawase.iloc[0]
+    df_kawase = df_kawase.set_axis(df_kawase.iloc[1].values.tolist(),axis=1).iloc[2:]
+    df_kawase.dropna(how='all',axis=1,inplace=True)
+    df_kawase.replace('*****',np.nan,inplace=True)
+    df_kawase = df_kawase.astype('float64')
+    df_kawase['day'] = pd.to_datetime(df_kawase.index,format='%Y/%m/%d')
+    df_kawase.set_index('day',inplace=True)
+    return df_kawase
+
 Experience = namedtuple("Experience", ["s","a","r","n_s","n_a","d"])
 
 class DataFramePreProcessing():
@@ -269,6 +298,7 @@ class Simulation():
         self.pr_log = None
 
 
+# SELL の直後に BUY となる時, シミュレートできてない
     def return_grad(self, df, index, gamma=0, delta=0):
         grad_ma_short = df['ma_short'].iloc[index+1] - df['ma_short'].iloc[index]
         grad_ma_long  = df['ma_long'].iloc[index+1] - df['ma_long'].iloc[index]
@@ -527,6 +557,9 @@ class XGBSimulation(Simulation):
         self.ma_long = 0
         self.ma_short = 0
         self.is_bought = False
+        # 20日以上 ホールドしたら, 自動的に売り
+        self.hold_day = 0
+        self.trigger_count = 0
         
     
     # online 学習の時だけ使ってる
@@ -582,12 +615,28 @@ class XGBSimulation(Simulation):
     
 #*    日付変更できるように変更
     def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
-                is_variable_strategy=False,is_observed=False):
+                is_variable_strategy=False,is_observed=False,df_="None"):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
         y_ = pd.DataFrame(y_check)
         y_.index = x_check.index
         x_check = self.return_split_df(x_check,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
         y_ = self.return_split_df(y_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        df_con = self.return_df_con(path_tpx,path_daw)
+        df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
+        df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
+        df_con = df_con.iloc[self.ma_long:]
+        df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        self.df_con = df_con
+
+        # 任意の期間の df を入力しても対応できる
+        if type(df_)==pd.DataFrame:
+            start_ = df_.index[0]
+            end_ = df_.index[-1]
+            x_check = x_check.loc[start_:end_]
+            y_ = y_.loc[start_:end_]
+            df_con = df_con.loc[start_:end_]
+
+
         y_check = y_.values.reshape(-1).tolist()
         length = len(x_check)
         predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
@@ -596,12 +645,7 @@ class XGBSimulation(Simulation):
         index_sell = 0
         prf = 0
         trade_count = 0
-        df_con = self.return_df_con(path_tpx,path_daw)
-        df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
-        df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
-        df_con = df_con.iloc[self.ma_long:]
-        df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        self.df_con = df_con
+
         pl = PlotTrade(df_con['close'],label='close')
         pl.add_plot(df_con['ma_short'],label='ma_short')
         pl.add_plot(df_con['ma_long'],label='ma_long')
@@ -656,7 +700,7 @@ class XGBSimulation(Simulation):
             
             
             if is_variable_strategy:
-                strategy = self.return_grad(df_con, index=i,gamma=0, delta=0)
+                strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
             
                 
             if strategy=='reverse':
@@ -674,7 +718,10 @@ class XGBSimulation(Simulation):
 #                     
                 else:
     #                 上がって売り
-                    if label==1 and prob>self.alpha:
+                    self.hold_day += 1
+                    if self.hold_day>=20:
+                        self.trigger_count+=1
+                    if (label==1 and prob>self.alpha) or self.hold_day >=20:
                         index_sell = df_con['close'].loc[x_check.index[i+1]]
                         end_time = x_check.index[i+1]
                         prf += index_sell - index_buy
@@ -682,6 +729,7 @@ class XGBSimulation(Simulation):
                         is_bought = False
                         trade_count += 1
                         pl.add_span(start_time,end_time)
+                        self.hold_day = 0
                     else:
                         eval_price = df_con['close'].iloc[i] - index_buy
                         total_eval_price += eval_price
@@ -702,7 +750,10 @@ class XGBSimulation(Simulation):
                         is_bought = True
                 else:
     #                 下がって売り
-                    if label==0 and prob>self.alpha:
+                    self.hold_day += 1
+                    if self.hold_day>=20:
+                        self.trigger_count+=1
+                    if (label==0 and prob>self.alpha) or self.hold_day>=20:
                         index_sell = df_con['close'].loc[x_check.index[i+1]]
                         end_time = x_check.index[i+1]
                         prf += index_sell - index_buy
@@ -710,6 +761,7 @@ class XGBSimulation(Simulation):
                         is_bought = False
                         trade_count += 1
                         pl.add_span(start_time,end_time)
+                        self.hold_day = 0
                     else:
                         eval_price = df_con['close'].iloc[i] - index_buy
                         total_eval_price += eval_price
@@ -751,6 +803,7 @@ class XGBSimulation(Simulation):
                 print("")
                 print(df)
                 print("")
+                print("trigger_count :",self.trigger_count)
                 pl.show()
         except:
             print("no trade")
@@ -1243,7 +1296,7 @@ class LearnXGB():
     def __init__(self):
         self.model = xgb.XGBClassifier()
         self.x_test = None
-    
+        plt.clf()
     
     def learn_xgb(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
@@ -1252,7 +1305,6 @@ class LearnXGB():
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 
             'n_estimators':16,
-            # 'use_label_encoder':False,
             'max_depth':4}
 
         xgb_model = xgb.XGBClassifier(**param_dist)
@@ -1273,7 +1325,6 @@ class LearnXGB():
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 
                 'n_estimators':16,
-                # 'use_label_encoder':False,
                 'max_depth':4
                  }
 
@@ -1299,7 +1350,7 @@ class LearnXGB():
         return state_, chart_
         
         
-    def make_xgb_data(self, path_tpx, path_daw, test_rate):
+    def make_xgb_data(self, path_tpx, path_daw, test_rate=0.8):
         df_con = self.make_df_con(path_tpx,path_daw)
         mk = MakeTrainData(df_con,test_rate=test_rate)
         x_train, y_train, x_test, y_test = mk.make_data()
@@ -1376,6 +1427,95 @@ class LearnXGB():
                 label = "STAY"
 
         return label
+
+class LearnClustering(LearnXGB):
+
+
+    def __init__(self,n_cluster=8,width=20,stride=5):
+        super(LearnClustering,self).__init__()
+        self.model : KMeans = None
+        self.n_cluster = n_cluster
+        self.width = width
+        self.stride = stride
+        self.n_label = None
+        self.wave_dict = None
+
+
+
+    def make_x_data(self,close_,width=20,stride=5):
+        length = len(close_)
+        close_tmp = standarize(close_)
+        close_list = close_tmp.tolist()
+
+        x = []
+        z = []
+        for i in range(0,length//stride,stride):
+            x.append(close_list[i:i+width])
+            z.append(close_.iloc[i:i+width])
+        x = np.array(x)
+        return x,z
+
+
+    def make_wave_dict(self,x,y,width):
+        n_label = list(set(y))
+        self.n_label = n_label
+        wave_dict = {i:np.array([0.0 for j in range(width)]) for i in n_label}
+        
+        # クラス波形の総和
+        for i in range(len(x)):
+            wave_dict[y[i]] += x[i]
+        
+        # 平均クラス波形
+        for i in range(len(y)):
+            count_class = list(y).count(y[i])
+            wave_dict[y[i]] /= count_class
+            wave_dict[y[i]] = preprocessing.scale(wave_dict[y[i]])
+        return wave_dict
+
+
+    def learn_clustering(self,path_tpx,path_daw,width=20,stride=5):
+        df_con = self.make_df_con(path_tpx,path_daw)
+        close_ = df_con['close']
+        x,_ = self.make_x_data(close_,width=width,stride=stride)
+        model = KMeans(n_clusters=self.n_cluster)
+        model.fit(x)
+        self.model = model
+        y = model.labels_
+        wave_dict = self.make_wave_dict(x,y,width)
+        self.wave_dict = wave_dict
+    
+
+    def show_class_wave(self):
+        for i in range(self.n_cluster):
+            print("--------------------")
+            print("class :",i)
+            plt.plot(self.wave_dict[i])
+            plt.show()
+            plt.clf()
+
+
+    def predict(self,path_tpx,path_daw,stride=2):
+        df_con = self.make_df_con(path_tpx,path_daw)
+        close_ = df_con["close"]
+        x,z = self.make_x_data(close_,stride=stride)
+        y_pred  = self.model.predict(x)
+        return y_pred,z
+
+
+    def predict2(self,df_con,stride=2):
+        close_ = df_con["close"]
+        x,z = self.make_x_data(close_,stride=stride)
+        y_pred  = self.model.predict(x)
+        return y_pred,z
+
+    
+    def return_y_pred(self,path_tpx,path_daw,stride=2):
+        df_con = self.make_df_con(path_tpx,path_daw)
+        close_ = df_con["close"]
+        x,z = self.make_x_data(close_,stride=stride)
+        y_pred  = self.model.predict(x)
+        return y_pred
+
 
 class LearnTree(LearnXGB):
     
