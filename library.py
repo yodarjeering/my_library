@@ -298,6 +298,91 @@ class Simulation():
         self.pr_log = None
 
 
+    def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None"):
+        x_check, y_check = self.make_check_data(path_tpx,path_daw)
+        y_ = pd.DataFrame(y_check)
+        y_.index = x_check.index
+        x_check = self.return_split_df(x_check,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        y_ = self.return_split_df(y_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        df_con = self.return_df_con(path_tpx,path_daw)
+        df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
+        df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
+        df_con = df_con.iloc[self.ma_long:]
+        df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+        # 任意の期間の df を入力しても対応できる
+        if type(df_)==pd.DataFrame:
+            start_ = df_.index[0]
+            end_ = df_.index[-1]
+            x_check = x_check.loc[start_:end_]
+            y_ = y_.loc[start_:end_]
+            df_con = df_con.loc[start_:end_]
+
+        self.df_con = df_con
+        y_check = y_.values.reshape(-1).tolist()
+        pl = PlotTrade(df_con['close'],label='close')
+        pl.add_plot(df_con['ma_short'],label='ma_short')
+        pl.add_plot(df_con['ma_long'],label='ma_long')
+        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
+        self.pr_log['reward'] = [0.0] * len(self.pr_log)
+        self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
+
+        return x_check,y_check,y_,df_con,pl
+
+
+    def set_for_online(self,x_check,y_):
+        x_tmp = x_check
+        y_tmp = y_
+        current_date = x_tmp.index[0]
+        acc_df = pd.DataFrame(index=x_tmp.index)
+        acc_df['pred'] = [-1] * len(acc_df)
+        return x_tmp, y_tmp, current_date, acc_df
+
+        
+    def learn_online(self,x_tmp,y_tmp,x_check,current_date,tmp_date):
+        x_ = x_tmp[current_date<=x_tmp.index]
+        x_ = x_[x_.index<tmp_date]
+        y_ = y_tmp[current_date<=y_tmp.index]
+        y_ = y_[y_.index<tmp_date]
+        self.xgb_model = self.xgb_model.fit(x_,y_)
+        predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        current_date = tmp_date
+
+        return predict_proba, current_date
+
+
+    def buy(self,is_buy,is_cant_buy,cant_buy,df_con,x_check,i):
+#   観測した始値が, 予測に反して上がっていた時, 買わない
+        if is_cant_buy:
+            cant_buy += 1
+            index_buy=-1
+            start_time=-1
+            is_bought = False
+            
+        index_buy = df_con['close'].loc[x_check.index[i+1]]
+        start_time = x_check.index[i+1]
+        is_bought = True
+        return index_buy, start_time, cant_buy, is_bought
+
+
+    def sell(self,df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i):
+        index_sell = df_con['close'].loc[x_check.index[i+1]]
+        end_time = x_check.index[i+1]
+        prf += index_sell - index_buy
+        prf_list.append(index_sell - index_buy)
+        is_bought = False
+        trade_count += 1
+        pl.add_span(start_time,end_time)
+        self.hold_day = 0
+        return prf, trade_count, is_bought
+
+
+    def hold(self,df_con,index_buy,total_eval_price,i):
+        eval_price = df_con['close'].iloc[i] - index_buy
+        total_eval_price += eval_price
+        self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+        return total_eval_price
+
+
 # SELL の直後に BUY となる時, シミュレートできてない
     def return_grad(self, df, index, gamma=0, delta=0):
         grad_ma_short = df['ma_short'].iloc[index+1] - df['ma_short'].iloc[index]
@@ -342,8 +427,7 @@ class Simulation():
     def calc_acc(self, acc_df, y_check):
         df = pd.DataFrame(columns = ['score','Up precision','Down precision','Up recall','Down recall','up_num','down_num'])
         acc_dict = {'TU':0,'FU':0,'TD':0,'FD':0}
-        
-        
+    
         for i in range(len(acc_df)):
             
             label = acc_df['pred'].iloc[i]
@@ -358,11 +442,13 @@ class Simulation():
                 else:
                     acc_dict['FU'] += 1
 
+        self.calc_accuracy(acc_dict,df)
 
+
+    def calc_accuracy(self,acc_dict,df):
         denom = 0
         for idx, key in enumerate(acc_dict):
             denom += acc_dict[key]
-        
         try:
             TU = acc_dict['TU']
             FU = acc_dict['FU']
@@ -381,6 +467,8 @@ class Simulation():
         except:
             print("division by zero")
             return None
+
+
 
 
 # ここ間違ってる
@@ -468,27 +556,15 @@ class TechnicalSimulation(Simulation):
         
         
     def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        df = self.process(self.make_df_con(path_tpx,path_daw))
-        df_process = self.return_split_df(df,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        is_bought = False
-        hold_count_day = 0
-        index_buy = 0
-        pl = PlotTrade(df_process['close'],label='close')
-        pl.add_plot(df_process['ma_short'],label='ma_5')
-        pl.add_plot(df_process['ma_long'],label='ma_25')   
-        prf = 0
+        _,_,_,df_con = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month)
+        df_process = self.process(df_con)
         prf_list = []
-        start_time = 0
-        end_time = 0
-        short_line = df_process['ma_short']
-        long_line  = df_process['ma_long']
+        is_bought = False
+        index_buy = 0
+        prf = 0
         trade_count = 0
-        self.pr_log = pd.DataFrame(index=df_process.index[self.ma_short:-1])
-        self.pr_log['reward'] = [0.0] * len(self.pr_log)
-        self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
         eval_price = 0
         total_eval_price = 0
-        
         
         for i in range(self.ma_short,len(df_process)-1):
             
@@ -562,14 +638,12 @@ class XGBSimulation(Simulation):
         self.trigger_count = 0
         
     
-    # online 学習の時だけ使ってる
+    # online 学習以外で使ってる
     def eval_proba(self, x_test, y_test):
         predict_proba = self.xgb_model.predict_proba(x_test.astype(float))
         df = pd.DataFrame(columns = ['score','Up precision','Down precision','Up recall','Down recall','up_num','down_num'])
-        j=0
         acc_dict = {'TU':0,'FU':0,'TD':0,'FD':0}
-        
-        
+         
         for i in range(len(predict_proba)):
             row = predict_proba[i]
             label = np.argmax(row)
@@ -586,84 +660,27 @@ class XGBSimulation(Simulation):
                     else:
                         acc_dict['FU'] += 1
 
-
-        denom = 0
-        for idx, key in enumerate(acc_dict):
-            denom += acc_dict[key]
-        
-        try:
-            TU = acc_dict['TU']
-            FU = acc_dict['FU']
-            TD = acc_dict['TD']
-            FD = acc_dict['FD']
-            score = (TU + TD)/(denom)
-            prec_u = TU/(TU + FU)
-            prec_d = TD/(TD + FD)
-            recall_u = TU/(TU + FD)
-            recall_d = TD/(TD + FU)
-            up_num = TU+FD
-            down_num = TD+FU
-            down_num
-            col_list = [score,prec_u,prec_d,recall_u,recall_d,up_num,down_num]
-            df.loc[j] = col_list
-            j+=1
-            return df
-        except:
-            print("division by zero")
-            return None
+        self.calc_accuracy(acc_dict,df)
         
     
 #*    日付変更できるように変更
+# 判定不能は -1, 騰貴予測は 1, 下落予測は 0
     def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
                 is_variable_strategy=False,is_observed=False,df_="None"):
-        x_check, y_check = self.make_check_data(path_tpx,path_daw)
-        y_ = pd.DataFrame(y_check)
-        y_.index = x_check.index
-        x_check = self.return_split_df(x_check,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        y_ = self.return_split_df(y_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        df_con = self.return_df_con(path_tpx,path_daw)
-        df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
-        df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
-        df_con = df_con.iloc[self.ma_long:]
-        df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        self.df_con = df_con
-
-        # 任意の期間の df を入力しても対応できる
-        if type(df_)==pd.DataFrame:
-            start_ = df_.index[0]
-            end_ = df_.index[-1]
-            x_check = x_check.loc[start_:end_]
-            y_ = y_.loc[start_:end_]
-            df_con = df_con.loc[start_:end_]
-
-
-        y_check = y_.values.reshape(-1).tolist()
+        
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,df_)
+        x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
         length = len(x_check)
+        prf_list = []
         predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
         is_bought = False
         index_buy = 0
         index_sell = 0
         prf = 0
         trade_count = 0
-
-        pl = PlotTrade(df_con['close'],label='close')
-        pl.add_plot(df_con['ma_short'],label='ma_short')
-        pl.add_plot(df_con['ma_long'],label='ma_long')
-        prf_list = []
-        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
-        self.pr_log['reward'] = [0.0] * len(self.pr_log)
-        self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
-        eval_price = 0
         total_eval_price = 0
-#*      オンライン学習用の学習データ   
-        x_tmp = x_check.copy()
-        y_tmp = y_.copy()
-        current_date = x_tmp.index[0]
-        acc_df = pd.DataFrame(index=x_tmp.index)
-        acc_df['pred'] = [-1] * len(acc_df)
-#* 判定不能は -1, 騰貴予測は 1, 下落予測は 0
-# is_observed=True としたことで買えなくなった取引の回数をカウント
-        cant_buy = 0
+        cant_buy = 0 # is_observed=True としたことで買えなくなった取引の回数をカウント
+
         
         for i in range(length-1):
             
@@ -676,21 +693,14 @@ class XGBSimulation(Simulation):
             self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
 #             label==0 -> down
 #             label==1 -> up
+
+
 #*          オンライン学習
-            tmp_date = x_tmp.index[i]
-            if current_date.month!=tmp_date.month and is_online:
-#             x_ = x_tmp.loc[:x_tmp.index]
-                x_ = x_tmp[current_date<=x_tmp.index]
-                x_ = x_[x_.index<tmp_date]
-                y_ = y_tmp[current_date<=y_tmp.index]
-                y_ = y_[y_.index<tmp_date]
-#                 param_dist = {'objective':'binary:logistic', 'n_estimators':16,'use_label_encoder':False,
-#                  'max_depth':4}
-#                 tmp_xgb = xgb.XGBClassifier(**param_dist)
-                self.xgb_model = self.xgb_model.fit(x_,y_)
-                predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
-                current_date = tmp_date
-            
+            tmp_date = x_tmp.index[i]   
+            if is_online and current_date.month!=tmp_date.month:
+                predict_proba, current_date = self.learn_online(x_tmp,y_tmp,x_check,current_date,tmp_date)
+
+
 # ここのprob は2クラスうち, 出力の大きいほうのクラスの可能性が代入されている
             if prob > self.alpha:
                 if label == 0:
@@ -702,70 +712,48 @@ class XGBSimulation(Simulation):
             if is_variable_strategy:
                 strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
             
-                
+                # 下がって買い
             if strategy=='reverse':
+                is_buy  = (label==0 and prob>self.alpha)
+                is_sell = ((label==1 and prob>self.alpha) or self.hold_day >=20)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             
                 if not is_bought:
-    #                 下がって買い
-                    if label==0 and prob>self.alpha:
-#                         観測した始値が, 下がるという予測に反して上がっていた時, 買わない
-                        if is_observed and df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]:
-                            cant_buy += 1
-                            continue
-                        index_buy = df_con['close'].loc[x_check.index[i+1]]
-                        start_time = x_check.index[i+1]
-                        is_bought = True
-#                     
+                    if is_buy:
+                        index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
+                    if not is_bought:
+                        continue
                 else:
-    #                 上がって売り
                     self.hold_day += 1
                     if self.hold_day>=20:
                         self.trigger_count+=1
-                    if (label==1 and prob>self.alpha) or self.hold_day >=20:
-                        index_sell = df_con['close'].loc[x_check.index[i+1]]
-                        end_time = x_check.index[i+1]
-                        prf += index_sell - index_buy
-                        prf_list.append(index_sell - index_buy)
-                        is_bought = False
-                        trade_count += 1
-                        pl.add_span(start_time,end_time)
-                        self.hold_day = 0
+
+                    if is_sell:
+                        prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i)
                     else:
-                        eval_price = df_con['close'].iloc[i] - index_buy
-                        total_eval_price += eval_price
-                        self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+                        total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
                         
                         
             elif strategy=='normal':
+                is_buy  = (label==1 and prob>self.alpha)
+                is_sell = ((label==0 and prob>self.alpha) or self.hold_day>=20)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
                 
                 if not is_bought:
-    #                 上がって買い
-                    if label==1 and prob>self.alpha:
-#             上がるという予測に反して, 始値が前日終値より下がっていたら買わない
-                        if is_observed and df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]:
-                            cant_buy += 1
-                            continue
-                        index_buy = df_con['close'].loc[x_check.index[i+1]]
-                        start_time = x_check.index[i+1]
-                        is_bought = True
+                    if is_buy:
+                        index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
+                    if not is_bought:
+                        continue
                 else:
-    #                 下がって売り
                     self.hold_day += 1
                     if self.hold_day>=20:
                         self.trigger_count+=1
-                    if (label==0 and prob>self.alpha) or self.hold_day>=20:
-                        index_sell = df_con['close'].loc[x_check.index[i+1]]
-                        end_time = x_check.index[i+1]
-                        prf += index_sell - index_buy
-                        prf_list.append(index_sell - index_buy)
-                        is_bought = False
-                        trade_count += 1
-                        pl.add_span(start_time,end_time)
-                        self.hold_day = 0
+
+                    if is_sell:
+                        prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i)
                     else:
-                        eval_price = df_con['close'].iloc[i] - index_buy
-                        total_eval_price += eval_price
-                        self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+                        total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+
             else:
                 print("No such strategy.")
                 return 
@@ -807,22 +795,7 @@ class XGBSimulation(Simulation):
                 pl.show()
         except:
             print("no trade")
-
-      
-    #  get_accuracy　関数作ったら無用になる
-    def return_accuracy(self, path_tpx,path_daw,strategy='normal',is_online=False,start_year=2021,start_month=1):
-        self.simulate(path_tpx,path_daw,is_validate=True,strategy=strategy,is_online=is_online)
-        y_check = pd.DataFrame(self.y_check)
-        y_check.index = self.acc_df.index
-        acc_df = self.acc_df.copy()
-        acc_df = acc_df[acc_df.index.year==start_year]
-        acc_df = acc_df[acc_df.index.month>=start_month]
-        y_check = y_check[y_check.index.year==start_year]
-        y_check = y_check[y_check.index.month>=start_month]
-        df = self.calc_acc(acc_df,y_check.values)
-        return df
     
-        
     def show_result(self, path_tpx,path_daw,strategy='normal'):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)  
         self.simulate(x_check,y_check,strategy)
@@ -1257,7 +1230,8 @@ class MakeTrainData():
         yesterday_close = df_con['close'].iloc[:-1]
         yesterday_close.index = df_con.index[1:]
 #         騰落率
-        x['RAF'] =  (today_close/yesterday_close -1)
+# 一度も使用されていなかったため, 削除
+        # x['RAF'] =  (today_close/yesterday_close -1)
 
         
 #         coef_short tmp1
@@ -1449,7 +1423,7 @@ class LearnClustering(LearnXGB):
 
         x = []
         z = []
-        for i in range(0,length//stride,stride):
+        for i in range(0,length-width,stride):
             x.append(close_list[i:i+width])
             z.append(close_.iloc[i:i+width])
         x = np.array(x)
