@@ -302,20 +302,22 @@ class Simulation():
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
         y_ = pd.DataFrame(y_check)
         y_.index = x_check.index
-        x_check = self.return_split_df(x_check,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        y_ = self.return_split_df(y_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
         df_con = self.return_df_con(path_tpx,path_daw)
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:]
-        df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+       
         # 任意の期間の df を入力しても対応できる
-        if type(df_)==pd.DataFrame:
+        if type(df_)==pd.DataFrame or type(df_)==pd.Series:
             start_ = df_.index[0]
             end_ = df_.index[-1]
             x_check = x_check.loc[start_:end_]
             y_ = y_.loc[start_:end_]
             df_con = df_con.loc[start_:end_]
+        else:
+            x_check = self.return_split_df(x_check,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+            y_ = self.return_split_df(y_,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
+            df_con = self.return_split_df(df_con,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
 
         self.df_con = df_con
         y_check = y_.values.reshape(-1).tolist()
