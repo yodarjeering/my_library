@@ -298,7 +298,7 @@ class Simulation():
         self.pr_log = None
 
 
-    def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None"):
+    def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None",is_validate=False):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
         y_ = pd.DataFrame(y_check)
         y_.index = x_check.index
@@ -319,9 +319,12 @@ class Simulation():
 
         self.df_con = df_con
         y_check = y_.values.reshape(-1).tolist()
-        pl = PlotTrade(df_con['close'],label='close')
-        pl.add_plot(df_con['ma_short'],label='ma_short')
-        pl.add_plot(df_con['ma_long'],label='ma_long')
+        if not is_validate:
+            pl = PlotTrade(df_con['close'],label='close')
+            pl.add_plot(df_con['ma_short'],label='ma_short')
+            pl.add_plot(df_con['ma_long'],label='ma_long')
+        else:
+            pl=None
         self.pr_log = pd.DataFrame(index=x_check.index[:-1])
         self.pr_log['reward'] = [0.0] * len(self.pr_log)
         self.pr_log['eval_reward'] = self.pr_log['reward'].tolist()
@@ -364,14 +367,17 @@ class Simulation():
         return index_buy, start_time, cant_buy, is_bought
 
 
-    def sell(self,df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i):
+    def sell(self,df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate):
         index_sell = df_con['close'].loc[x_check.index[i+1]]
         end_time = x_check.index[i+1]
         prf += index_sell - index_buy
         prf_list.append(index_sell - index_buy)
         is_bought = False
         trade_count += 1
-        pl.add_span(start_time,end_time)
+        if not is_validate:
+            pl.add_span(start_time,end_time)
+        else:
+            pass
         self.hold_day = 0
         return prf, trade_count, is_bought
 
@@ -442,13 +448,15 @@ class Simulation():
                 else:
                     acc_dict['FU'] += 1
 
-        self.calc_accuracy(acc_dict,df)
+        df = self.calc_accuracy(acc_dict,df)
+        return df
 
 
     def calc_accuracy(self,acc_dict,df):
         denom = 0
         for idx, key in enumerate(acc_dict):
             denom += acc_dict[key]
+        
         try:
             TU = acc_dict['TU']
             FU = acc_dict['FU']
@@ -660,7 +668,7 @@ class XGBSimulation(Simulation):
                     else:
                         acc_dict['FU'] += 1
 
-        self.calc_accuracy(acc_dict,df)
+        return self.calc_accuracy(acc_dict,df)
         
     
 #*    日付変更できるように変更
@@ -668,7 +676,7 @@ class XGBSimulation(Simulation):
     def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
                 is_variable_strategy=False,is_observed=False,df_="None"):
         
-        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,df_)
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,df_,is_validate)
         x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
         length = len(x_check)
         prf_list = []
@@ -693,14 +701,10 @@ class XGBSimulation(Simulation):
             self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
 #             label==0 -> down
 #             label==1 -> up
-
-
-#*          オンライン学習
+#             オンライン学習
             tmp_date = x_tmp.index[i]   
             if is_online and current_date.month!=tmp_date.month:
                 predict_proba, current_date = self.learn_online(x_tmp,y_tmp,x_check,current_date,tmp_date)
-
-
 # ここのprob は2クラスうち, 出力の大きいほうのクラスの可能性が代入されている
             if prob > self.alpha:
                 if label == 0:
@@ -712,51 +716,35 @@ class XGBSimulation(Simulation):
             if is_variable_strategy:
                 strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
             
-                # 下がって買い
+
             if strategy=='reverse':
                 is_buy  = (label==0 and prob>self.alpha)
-                is_sell = ((label==1 and prob>self.alpha) or self.hold_day >=20)
+                is_sell = ((label==1 and prob>self.alpha) or self.hold_day >= 20)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
-            
-                if not is_bought:
-                    if is_buy:
-                        index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
-                    if not is_bought:
-                        continue
-                else:
-                    self.hold_day += 1
-                    if self.hold_day>=20:
-                        self.trigger_count+=1
-
-                    if is_sell:
-                        prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i)
-                    else:
-                        total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
-                        
-                        
             elif strategy=='normal':
                 is_buy  = (label==1 and prob>self.alpha)
-                is_sell = ((label==0 and prob>self.alpha) or self.hold_day>=20)
+                is_sell = ((label==0 and prob>self.alpha) or self.hold_day >= 20)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
-                
-                if not is_bought:
-                    if is_buy:
-                        index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
-                    if not is_bought:
-                        continue
-                else:
-                    self.hold_day += 1
-                    if self.hold_day>=20:
-                        self.trigger_count+=1
-
-                    if is_sell:
-                        prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i)
-                    else:
-                        total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
-
             else:
                 print("No such strategy.")
                 return 
+
+            
+            if not is_bought:
+                if is_buy:
+                    index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
+                if not is_bought:
+                    continue
+            else:
+                self.hold_day += 1
+                if self.hold_day>=20:
+                    self.trigger_count+=1
+
+                if is_sell:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
             
             self.is_bought = is_bought
                   
@@ -767,7 +755,8 @@ class XGBSimulation(Simulation):
             prf_list.append(index_sell - index_buy)
             end_time = x_check.index[-1]
             trade_count+=1
-            pl.add_span(start_time,end_time)
+            if not is_validate:
+                pl.add_span(start_time,end_time)
 
         
         self.pr_log['reward'].loc[df_con.index[-1]] = prf 
