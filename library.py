@@ -564,7 +564,7 @@ class TechnicalSimulation(Simulation):
         
         
     def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        _,_,_,df_con = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month)
+        _,_,_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month)
         df_process = self.process(df_con)
         prf_list = []
         is_bought = False
@@ -573,6 +573,9 @@ class TechnicalSimulation(Simulation):
         trade_count = 0
         eval_price = 0
         total_eval_price = 0
+        short_line = df_process['ma_short']
+        long_line = df_process['ma_long']
+
         
         for i in range(self.ma_short,len(df_process)-1):
             
