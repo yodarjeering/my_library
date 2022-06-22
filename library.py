@@ -575,6 +575,8 @@ class TechnicalSimulation(Simulation):
         trade_count = 0
         eval_price = 0
         total_eval_price = 0
+        short_line = df_process['ma_short']
+        long_line = df_process['ma_long']
         
         for i in range(self.ma_short,len(df_process)-1):
             
