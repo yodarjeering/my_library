@@ -432,6 +432,8 @@ class Simulation():
         for i in range(len(acc_df)):
             
             label = acc_df['pred'].iloc[i]
+            if label==-1:continue
+
             if y_check[i]==label:
                 if label==0:
                     acc_dict['TD'] += 1
@@ -472,82 +474,7 @@ class Simulation():
             return None
 
 
-    def calc_acc3(self, acc_df, y_check):
-        df = pd.DataFrame(columns = ['score','Up precision','Stay precision','Down precision','Up recall','Stay recall','Down recall','up_num','stay_num','down_num'])
-        acc_dict = {'TU':0,'FUs':0,'FUd':0,'TS':0,'FSu':0,'FSd':0,'TD':0,'FDu':0,'FDs':0}
-    
-        for i in range(len(acc_df)):
-            
-            label = acc_df['pred'].iloc[i]
-            if y_check[i]==label:
-                if label==0:
-                    acc_dict['TD'] += 1
-                elif label==1:
-                    acc_dict['TS'] += 1
-                else:#label = 2 : UP
-                    acc_dict['TU'] += 1
-            else:
-                if label==0:
-                    if y_check[i]==2:
-                        # FDu
-                        acc_dict['FDu'] += 1
-                    else: 
-                        # FDs
-                        acc_dict['FDs'] += 1
-                elif label==1:
-                    if y_check[i]==2:
-                        # FSu
-                        acc_dict['FSu'] += 1
-                    else:
-                        # FSd
-                        acc_dict['FSd'] += 1
-                else:
-                    if y_check[i]==0:
-                        # FUd
-                        acc_dict['FUd'] += 1
-                    else:
-                        # FUs
-                        acc_dict['FUs'] += 1
-
-        df = self.calc_accuracy3(acc_dict,df)
-        return df
-
-
-    def calc_accuracy3(self,acc_dict,df):
-        denom = 0
-        for idx, key in enumerate(acc_dict):
-            denom += acc_dict[key]
-        
-        try:
-            TU = acc_dict['TU']
-            FUs = acc_dict['FUs']
-            FUd = acc_dict['FUd']
-            TS = acc_dict['TS']
-            FSu = acc_dict['FSu']
-            FSd = acc_dict['FSd']
-            TD = acc_dict['TD']
-            FDu = acc_dict['FDu']
-            FDs = acc_dict['FDs']
-
-            score = (TU + TD + TS)/(denom)
-            prec_u = TU/(TU + FUs + FUd)
-            prec_s = TS/(TS + FSu + FSd)
-            prec_d = TD/(TD + FDu + FDs)
-            recall_u = TU/(TU + FSu + FDu)
-            recall_s = TS/(TS + FUs + FDs)
-            recall_d = TD/(TD + FUd + FSd)
-            # recall の分母
-            up_num = TU+FSu+FDu
-            stay_num = TS+FUs+FDs
-            down_num = TD+FUd+FSd
-            col_list = [score,prec_u,prec_s,prec_d,recall_u,recall_s,recall_d,up_num,stay_num,down_num]
-            df.loc[0] = col_list
-            return df
-        except:
-            print("division by zero")
-            return None
-
-
+ 
 # ここ間違ってる
     def return_split_df(self,df,start_year=2021,end_year=2021,start_month=1,end_month=12):
         df = df[df.index.year>=start_year]
@@ -596,6 +523,8 @@ class Simulation():
         self.pr_log['reward'] = self.pr_log['reward'].map(lambda x: x/wallet)
         self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
         return self.pr_log
+
+
 
 class TechnicalSimulation(Simulation):
     
@@ -716,16 +645,10 @@ class XGBSimulation(Simulation):
         # 20日以上 ホールドしたら, 自動的に売り
         self.hold_day = 0
         self.trigger_count = 0
-        if self.lx.num_class==2:
-            self.calc_func = self.calc_acc
-            self.MK = MakeTrainData
-        elif self.lx.num_class==3:
-            self.calc_func = self.calc_acc3
-            self.MK = MakeTrainData3
+        self.calc_func = self.calc_acc
+        self.MK = MakeTrainData
 
 
-        
-    
     # online 学習以外で使ってる
     def eval_proba(self, x_test, y_test):
         predict_proba = self.xgb_model.predict_proba(x_test.astype(float))
@@ -750,9 +673,7 @@ class XGBSimulation(Simulation):
 
         return self.calc_accuracy(acc_dict,df)
         
-    
-#*    日付変更できるように変更
-# 判定不能は -1, 騰貴予測は 1, 下落予測は 0
+
     def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
                 is_variable_strategy=False,is_observed=False,df_="None"):
         
@@ -789,10 +710,8 @@ class XGBSimulation(Simulation):
             if prob > self.alpha:
                 if label == 0:
                     acc_df.iloc[i] = 0
-                elif label == 1:  
+                else: # label == 1:  
                     acc_df.iloc[i] = 1
-                else: #  label==2
-                    acc_df.iloc[i] = 2
             
             if is_variable_strategy:
                 strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
@@ -848,10 +767,10 @@ class XGBSimulation(Simulation):
             
         
         try:
-            if not is_online:
-                df = self.eval_proba(x_check,y_check)
+            if is_online:
+                df = self.calc_acc(acc_df, y_check)
             else:
-                df = self.calc_func(acc_df, y_check)
+                df = self.eval_proba(x_check,y_check)
             self.accuracy_df = df
             log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
             self.trade_log = log
@@ -870,6 +789,203 @@ class XGBSimulation(Simulation):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)  
         self.simulate(x_check,y_check,strategy)
         
+class XGBSimulation2(XGBSimulation):
+
+
+    def __init__(self,lx,alpha=0.3):
+        super(XGBSimulation2,self).__init__(lx,alpha)
+        self.MK = MakeTrainData3
+
+    def calc_acc(self, acc_df, y_check):
+        df = pd.DataFrame(columns = ['score','Up precision','Stay precision','Down precision','Up recall','Stay recall','Down recall','up_num','stay_num','down_num'])
+        acc_dict = {'TU':0,'FUs':0,'FUd':0,'TS':0,'FSu':0,'FSd':0,'TD':0,'FDu':0,'FDs':0}
+    
+        for i in range(len(acc_df)):
+            
+            label = acc_df['pred'].iloc[i]
+            if label == -1: continue
+
+            if y_check[i]==label:
+                if label==0:
+                    acc_dict['TD'] += 1
+                elif label==1:
+                    acc_dict['TS'] += 1
+                else:#label = 2 : UP
+                    acc_dict['TU'] += 1
+            else:
+                if label==0:
+                    if y_check[i]==2:
+                        # FDu
+                        acc_dict['FDu'] += 1
+                    else: 
+                        # FDs
+                        acc_dict['FDs'] += 1
+                elif label==1:
+                    if y_check[i]==2:
+                        # FSu
+                        acc_dict['FSu'] += 1
+                    else:
+                        # FSd
+                        acc_dict['FSd'] += 1
+                else:
+                    if y_check[i]==0:
+                        # FUd
+                        acc_dict['FUd'] += 1
+                    else:
+                        # FUs
+                        acc_dict['FUs'] += 1
+
+        df = self.calc_accuracy(acc_dict,df)
+        return df
+
+
+    def calc_accuracy(self,acc_dict,df):
+        denom = 0
+        for idx, key in enumerate(acc_dict):
+            denom += acc_dict[key]
+        
+        # try:
+        TU = acc_dict['TU']
+        FUs = acc_dict['FUs']
+        FUd = acc_dict['FUd']
+        TS = acc_dict['TS']
+        FSu = acc_dict['FSu']
+        FSd = acc_dict['FSd']
+        TD = acc_dict['TD']
+        FDu = acc_dict['FDu']
+        FDs = acc_dict['FDs']
+
+        score = (TU + TD + TS)/(denom)
+        prec_u = TU/(TU + FUs + FUd)
+        prec_s = TS/(TS + FSu + FSd)
+        prec_d = TD/(TD + FDu + FDs)
+        recall_u = TU/(TU + FSu + FDu)
+        recall_s = TS/(TS + FUs + FDs)
+        recall_d = TD/(TD + FUd + FSd)
+        # recall の分母
+        up_num = TU+FSu+FDu
+        stay_num = TS+FUs+FDs
+        down_num = TD+FUd+FSd
+        col_list = [score,prec_u,prec_s,prec_d,recall_u,recall_s,recall_d,up_num,stay_num,down_num]
+        df.loc[0] = col_list
+        return df
+        # except:
+        #     print("division by zero")
+        #     return None
+
+
+
+    def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
+            is_variable_strategy=False,is_observed=False,df_="None"):
+    
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,df_,is_validate)
+        x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
+        length = len(x_check)
+        prf_list = []
+        predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        is_bought = False
+        index_buy = 0
+        index_sell = 0
+        prf = 0
+        trade_count = 0
+        total_eval_price = 0
+        cant_buy = 0 # is_observed=True としたことで買えなくなった取引の回数をカウント
+
+        
+        for i in range(length-1):
+            
+            
+            row = predict_proba[i]
+            label = np.argmax(row)
+            prob = row[label]
+            total_eval_price = prf
+            self.pr_log['reward'].loc[df_con.index[i]] = prf 
+            self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+#             label==0 -> down
+#             label==1 -> up
+#             オンライン学習
+            tmp_date = x_tmp.index[i]   
+            if is_online and current_date.month!=tmp_date.month:
+                predict_proba, current_date = self.learn_online(x_tmp,y_tmp,x_check,current_date,tmp_date)
+# ここのprob は2クラスうち, 出力の大きいほうのクラスの可能性が代入されている
+            if prob > self.alpha:
+                if label == 0:
+                    acc_df.iloc[i] = 0
+                elif label == 1:  
+                    acc_df.iloc[i] = 1
+                else: #  label==2
+                    acc_df.iloc[i] = 2
+            
+            if is_variable_strategy:
+                strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
+            
+
+            if strategy=='reverse':
+                is_buy  = (label==0 and prob>self.alpha)
+                is_sell = ((label==2 and prob>self.alpha) or self.hold_day >= 20)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
+            elif strategy=='normal':
+                is_buy  = (label==2 and prob>self.alpha)
+                is_sell = ((label==0 and prob>self.alpha) or self.hold_day >= 20)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+            else:
+                print("No such strategy.")
+                return 
+
+            
+            if not is_bought:
+                if is_buy:
+                    index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
+                if not is_bought:
+                    continue
+            else:
+                self.hold_day += 1
+                if self.hold_day>=20:
+                    self.trigger_count+=1
+
+                if is_sell:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
+            
+            self.is_bought = is_bought
+                
+        
+        if is_bought:
+            index_sell = df_con['close'].loc[x_check.index[-1]] 
+            prf += index_sell - index_buy
+            prf_list.append(index_sell - index_buy)
+            end_time = x_check.index[-1]
+            trade_count+=1
+            if not is_validate:
+                pl.add_span(start_time,end_time)
+
+        
+        self.pr_log['reward'].loc[df_con.index[-1]] = prf 
+        self.pr_log['eval_reward'].loc[df_con.index[-1]] = total_eval_price
+        prf_array = np.array(prf_list)
+        self.acc_df = acc_df
+        self.y_check = y_check
+            
+        
+        # try:
+        df = self.calc_acc(acc_df, y_check)
+        self.accuracy_df = df
+        log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            print(df)
+            print("")
+            print("trigger_count :",self.trigger_count)
+            pl.show()
+        # except:
+        #     print("no trade")
+
+
 class StrategymakerSimulation(XGBSimulation):
 
 
@@ -1269,8 +1385,6 @@ class MakeTrainData():
         y_test  = y[int(len(x)*self.test_rate):]
         return y_train,y_test
 
-
-
 class MakeTrainData3(MakeTrainData):
 
 
@@ -1300,8 +1414,6 @@ class MakeTrainData3(MakeTrainData):
         y_train = y[self.ma_short-1:int(len(x)*self.test_rate)]
         y_test  = y[int(len(x)*self.test_rate):]
         return y_train,y_test
-
-
 
 class LearnXGB():
     
@@ -1544,7 +1656,6 @@ class LearnClustering(LearnXGB):
 
     def encode(self, strategy, alpha, wave_dict):
         pass
-
 
 class LearnTree(LearnXGB):
     
