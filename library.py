@@ -287,6 +287,7 @@ class Simulation():
         self.accuracy_df = None
         self.trade_log = None
         self.pr_log = None
+        self.MK = MakeTrainData
 
 
     def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None",is_validate=False):
@@ -328,13 +329,11 @@ class Simulation():
     def set_for_online(self,x_check,y_):
         x_tmp = x_check
         y_tmp = y_
-        # try:
         current_date = x_tmp.index[0]
         acc_df = pd.DataFrame(index=x_tmp.index)
         acc_df['pred'] = [-1] * len(acc_df)
         return x_tmp, y_tmp, current_date, acc_df
-        # except:
-        #     return None,None,None,None
+
 
         
     def learn_online(self,x_tmp,y_tmp,x_check,current_date,tmp_date):
@@ -414,7 +413,7 @@ class Simulation():
     
     def make_check_data(self,path_tpx,path_daw):
         df_con = self.make_df_con(path_tpx,path_daw)
-        mk = MakeTrainData(df_con,test_rate=1.0)
+        mk = self.MK(df_con,test_rate=1.0)
         x_check, y_check, _, _ = mk.make_data()
         self.ma_short = mk.ma_short
         self.ma_long = mk.ma_long
@@ -473,6 +472,80 @@ class Simulation():
             return None
 
 
+    def calc_acc3(self, acc_df, y_check):
+        df = pd.DataFrame(columns = ['score','Up precision','Stay precision','Down precision','Up recall','Stay recall','Down recall','up_num','stay_num','down_num'])
+        acc_dict = {'TU':0,'FUs':0,'FUd':0,'TS':0,'FSu':0,'FSd':0,'TD':0,'FDu':0,'FDs':0}
+    
+        for i in range(len(acc_df)):
+            
+            label = acc_df['pred'].iloc[i]
+            if y_check[i]==label:
+                if label==0:
+                    acc_dict['TD'] += 1
+                elif label==1:
+                    acc_dict['TS'] += 1
+                else:#label = 2 : UP
+                    acc_dict['TU'] += 1
+            else:
+                if label==0:
+                    if y_check[i]==2:
+                        # FDu
+                        acc_dict['FDu'] += 1
+                    else: 
+                        # FDs
+                        acc_dict['FDs'] += 1
+                elif label==1:
+                    if y_check[i]==2:
+                        # FSu
+                        acc_dict['FSu'] += 1
+                    else:
+                        # FSd
+                        acc_dict['FSd'] += 1
+                else:
+                    if y_check[i]==0:
+                        # FUd
+                        acc_dict['FUd'] += 1
+                    else:
+                        # FUs
+                        acc_dict['FUs'] += 1
+
+        df = self.calc_accuracy3(acc_dict,df)
+        return df
+
+
+    def calc_accuracy3(self,acc_dict,df):
+        denom = 0
+        for idx, key in enumerate(acc_dict):
+            denom += acc_dict[key]
+        
+        try:
+            TU = acc_dict['TU']
+            FUs = acc_dict['FUs']
+            FUd = acc_dict['FUd']
+            TS = acc_dict['TS']
+            FSu = acc_dict['FSu']
+            FSd = acc_dict['FSd']
+            TD = acc_dict['TD']
+            FDu = acc_dict['FDu']
+            FDs = acc_dict['FDs']
+
+            score = (TU + TD + TS)/(denom)
+            prec_u = TU/(TU + FUs + FUd)
+            prec_s = TS/(TS + FSu + FSd)
+            prec_d = TD/(TD + FDu + FDs)
+            recall_u = TU/(TU + FSu + FDu)
+            recall_s = TS/(TS + FUs + FDs)
+            recall_d = TD/(TD + FUd + FSd)
+            # recall の分母
+            up_num = TU+FSu+FDu
+            stay_num = TS+FUs+FDs
+            down_num = TD+FUd+FSd
+            col_list = [score,prec_u,prec_s,prec_d,recall_u,recall_s,recall_d,up_num,stay_num,down_num]
+            df.loc[0] = col_list
+            return df
+        except:
+            print("division by zero")
+            return None
 
 
 # ここ間違ってる
@@ -630,9 +703,10 @@ class TechnicalSimulation(Simulation):
 class XGBSimulation(Simulation):
     
     
-    def __init__(self, xgb_model, alpha=0.70):
+    def __init__(self, lx, alpha=0.70):
         super(XGBSimulation,self).__init__()
-        self.xgb_model = xgb_model
+        self.lx = lx
+        self.xgb_model = lx.model
         self.alpha = alpha
         self.acc_df = None
         self.y_check = None
@@ -642,6 +716,14 @@ class XGBSimulation(Simulation):
         # 20日以上 ホールドしたら, 自動的に売り
         self.hold_day = 0
         self.trigger_count = 0
+        if self.lx.num_class==2:
+            self.calc_func = self.calc_acc
+            self.MK = MakeTrainData
+        elif self.lx.num_class==3:
+            self.calc_func = self.calc_acc3
+            self.MK = MakeTrainData3
+
+
         
     
     # online 学習以外で使ってる
@@ -707,9 +789,10 @@ class XGBSimulation(Simulation):
             if prob > self.alpha:
                 if label == 0:
                     acc_df.iloc[i] = 0
-                else: #l able == 1 
+                elif label == 1:  
                     acc_df.iloc[i] = 1
-            
+                else: #  label==2
+                    acc_df.iloc[i] = 2
             
             if is_variable_strategy:
                 strategy = self.return_grad(df_con, index=i-1,gamma=0, delta=0)
@@ -768,7 +851,7 @@ class XGBSimulation(Simulation):
             if not is_online:
                 df = self.eval_proba(x_check,y_check)
             else:
-                df = self.calc_acc(acc_df, y_check)
+                df = self.calc_func(acc_df, y_check)
             self.accuracy_df = df
             log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
             self.trade_log = log
@@ -964,15 +1047,14 @@ class StrategymakerSimulation(XGBSimulation):
 class MakeTrainData():
     
 
-    def __init__(self, df_con, test_rate=0.9, questions_index = [], is_bit_search=False,is_category=True,ma_short=5,ma_long=25):
+    def __init__(self, df_con, test_rate=0.9, is_bit_search=False,is_category=True,ma_short=5,ma_long=25):
         self.df_con = df_con
         self.test_rate = test_rate
-        self.questions_index = questions_index
         self.is_bit_search = is_bit_search
         self.is_category = is_category
         self.ma_short = ma_short
         self.ma_long = ma_long
-                
+
                 
     def add_ma(self):
         df_process = self.df_con.copy()
@@ -991,7 +1073,6 @@ class MakeTrainData():
         
     def make_data(self,is_check=False):
         x = pd.DataFrame(index=self.df_con.index)
-        y = []
         # この書き方は環境によってはエラー
         # x.index = self.df_con.index
         df_con = self.df_con.copy()
@@ -1002,144 +1083,78 @@ class MakeTrainData():
         else:
             end_point = len(self.df_con)-1
         
+        # ダウ変化率
         dawp_5 = df_con['dclose'].iloc[:-5]
         dawp_5.index = df_con.index[5:]
         x['dawp_5'] = dawp_5
-        # dawp_4 = df_con['dclose'].iloc[:-4]
-        # dawp_4.index = df_con.index[4:]
-        # x['dawp_4'] = dawp_4
-        # dawp_3 = df_con['dclose'].iloc[:-3]
-        # dawp_3.index = df_con.index[3:]
-        # x['dawp_3'] = dawp_3
-        # dawp_2 = df_con['dclose'].iloc[:-2]
-        # dawp_2.index = df_con.index[2:]
-        # x['dawp_2'] = dawp_2
-        # dawp_1 = df_con['dclose'].iloc[:-1]
-        # dawp_1.index = df_con.index[1:]
-        # x['dawp_1'] = dawp_1
         dawp_0 = df_con['dclose']
         x['dawp_0'] = dawp_0
         
+        # 日経変化率
         nikkeip_5 = df_con['pclose'].iloc[:-5]
         nikkeip_5.index = df_con.index[5:]
         x['nikkeip_5'] = nikkeip_5
-        
-        # nikkeip_4 = df_con['pclose'].iloc[:-4]
-        # nikkeip_4.index = df_con.index[4:]
-        # x['nikkeip_4'] = nikkeip_4
-        
-        # nikkeip_3 = df_con['pclose'].iloc[:-3]
-        # nikkeip_3.index = df_con.index[3:]
-        # x['nikkeip_3'] = nikkeip_3 
-        # nikkeip_2 = df_con['pclose'].iloc[:-2]
-        # nikkeip_2.index = df_con.index[2:]
-        # x['nikkeip_2'] = nikkeip_2
-        # nikkeip_1 = df_con['pclose'].iloc[:-1]
-        # nikkeip_1.index = df_con.index[1:]
-        # x['nikkeip_1'] = nikkeip_1
         nikkeip_0 = df_con['pclose']
         x['nikkeip_0'] = nikkeip_0
         
+        # high - low 変化率
         high_low = (df_con['high']-df_con['low'])/df_con['close']
         x['diff_rate'] = high_low
         
+        # close - open 変化率
         close_open = (df_con['close']-df_con['open'])/df_con['close']
         x['close_open'] = close_open
         
+        # 売買量変化率
         nikkei_volumep = df_con['volume'].pct_change()
         x['nikkei_volumep'] = nikkei_volumep
         
+        # 短期標準偏差ベクトル
         std_s_5 = df_ma['std_short'].iloc[:-5]
         std_s_5.index = df_ma.index[5:]
         x['std_s_5'] = std_s_5
-        # std_s_4 = df_ma['std_short'].iloc[:-4]
-        # std_s_4.index = df_ma.index[4:]
-        # x['std_s_4'] = std_s_4
-        # std_s_3 = df_ma['std_short'].iloc[:-3]
-        # std_s_3.index = df_ma.index[3:]
-        # x['std_s_3'] = std_s_3
-        # std_s_2 = df_ma['std_short'].iloc[:-2]
-        # std_s_2.index = df_ma.index[2:]
-        # x['std_s_2'] = std_s_2
-        # std_s_1 = df_ma['std_short'].iloc[:-1]
-        # std_s_1.index = df_ma.index[1:]
-        # x['std_s_1'] = std_s_1
         std_s_0 = df_ma['std_short']
         x['std_s_0'] = std_s_0
         
-        
+        # 長期標準偏差ベクトル
         std_l_5 = df_ma['std_long'].iloc[:-5]
         std_l_5.index = df_ma.index[5:]
         x['std_l_5'] = std_l_5
-        # std_l_4 = df_ma['std_long'].iloc[:-4]
-        # std_l_4.index = df_ma.index[4:]
-        # x['std_l_4'] = std_l_4
-        # std_l_3 = df_ma['std_long'].iloc[:-3]
-        # std_l_3.index = df_ma.index[3:]
-        # x['std_l_3'] = std_l_3
-        # std_l_2 = df_ma['std_long'].iloc[:-2]
-        # std_l_2.index = df_ma.index[2:]
-        # x['std_l_2'] = std_l_2
-        # std_l_1 = df_ma['std_long'].iloc[:-1]
-        # std_l_1.index = df_ma.index[1:]
-        # x['std_l_1'] = std_l_1
         std_l_0 = df_ma['std_long']
         x['std_l_0'] = std_l_0
         
-# このままの変換だと, 相関しすぎているので, 変化率 or 基準の値で割るなど, 操作が必要
+        # 短期移動平均ベクトル
         vec_s_5 = (df_ma['ma_short'].diff(5)/5)
         x['vec_s_5'] = vec_s_5
-        # vec_s_4 = (df_ma['ma_short'].diff(4)/4)
-        # x['vec_s_4'] = vec_s_4
-        # vec_s_3 = (df_ma['ma_short'].diff(3)/3)
-        # x['vec_s_3'] = vec_s_3
-        # vec_s_2 = (df_ma['ma_short'].diff(2)/2)
-        # x['vec_s_2'] = vec_s_2
         vec_s_1 = (df_ma['ma_short'].diff(1)/1)
         x['vec_s_1'] = vec_s_1
         
-    
+        # 長期移動平均ベクトル
         vec_l_5 = (df_ma['ma_long'].diff(5)/5)
         x['vec_l_5'] = vec_l_5
-        # vec_l_4 = (df_ma['ma_long'].diff(4)/4)
-        # x['vec_l_4'] = vec_l_4
-        # vec_l_3 = (df_ma['ma_long'].diff(3)/3)
-        # x['vec_l_3'] = vec_l_3
-        # vec_l_2 = (df_ma['ma_long'].diff(2)/2)
-        # x['vec_l_2'] = vec_l_2
         vec_l_1 = (df_ma['ma_long'].diff(1)/1)
         x['vec_l_1'] = vec_l_1
         
 #         移動平均乖離率
         x['d_MASL'] = df_ma['ma_short']/df_ma['ma_long']
-#             ema のベクトル
 
+#          ema短期のベクトル
         emavec_s_5 = (df_ma['ema_short'].diff(5)/5)
         x['emavec_s_5'] = emavec_s_5
-        # emavec_s_4 = (df_ma['ema_short'].diff(4)/4)
-        # x['emavec_s_4'] = emavec_s_4
-        # emavec_s_3 = (df_ma['ema_short'].diff(3)/3)
-        # x['emavec_s_3'] = emavec_s_3
-        # emavec_s_2 = (df_ma['ema_short'].diff(2)/2)
-        # x['emavec_s_2'] = emavec_s_2
         emavec_s_1 = (df_ma['ema_short'].diff(1)/1)
         emavec_s_1.index = df_ma.index
         x['emavec_s_1'] = emavec_s_1
     
+        # ema長期ベクトル
         emavec_l_5 = (df_ma['ema_long'].diff(5)/5)
         x['emavec_l_5'] = emavec_l_5
-        # emavec_l_4 = (df_ma['ema_long'].diff(4)/4)
-        # x['emavec_l_4'] = emavec_l_4
-        # emavec_l_3 = (df_ma['ema_long'].diff(3)/3)
-        # x['emavec_l_3'] = emavec_l_3
-        # emavec_l_2 = (df_ma['ema_long'].diff(2)/2)
-        # x['emavec_l_2'] = emavec_l_2
         emavec_l_1 = (df_ma['ema_long'].diff(1)/1)
         x['emavec_l_1'] = emavec_l_1
 
         #         EMA移動平均乖離率
         x['d_EMASL'] = df_ma['ema_short']/df_ma['ema_long']
         
+        # macd
         macd = df_ma['macd']
         x['macd'] = macd
         macd_signal_short = df_ma['macd_signal_short']
@@ -1147,31 +1162,31 @@ class MakeTrainData():
         macd_signal_long = df_ma['macd_signal_long']
         x['macd_signal_long'] = macd_signal_long
             
-        
+        # 短期相関係数
         df_tmp1 = df_con[['close','daw_close']].rolling(self.ma_short).corr()
         corr_short = df_tmp1.drop(df_tmp1.index[0:-1:2])['close']
         corr_short = corr_short.reset_index().set_index('day')['close']
         x['corr_short'] = corr_short
         
-        
+        # 長期相関係数
         df_tmp2 = df_con[['close','daw_close']].rolling(self.ma_long).corr()
         corr_long = df_tmp2.drop(df_tmp2.index[0:-1:2])['close']
         corr_long = corr_long.reset_index().set_index('day')['close']
         x['corr_long'] = corr_long
         
-        
+        # 歪度
         skew_short = df_con['close'].rolling(self.ma_short).skew()
         x['skew_short'] = skew_short
         skew_long = df_con['close'].rolling(self.ma_long).skew()
         x['skew_long'] = skew_long
         
-        
+        # 尖度
         kurt_short = df_con['close'].rolling(self.ma_short).kurt()
         x['kurt_short'] = kurt_short
         kurt_long = df_con['close'].rolling(self.ma_long).kurt()
         x['kurt_long'] = kurt_long
         
-        
+        # RSI 相対力指数
         df_up = df_con['dclose'].copy()
         df_down = df_con['dclose'].copy()
         df_up[df_up<0] = 0
@@ -1191,10 +1206,11 @@ class MakeTrainData():
         high_ = df_con['high']
         low_ = df_con['low']
         close_ = df_con['close']
-#         Open Close 乖離率
+
+#        Open Close 乖離率
         x['d_OC'] = open_/close_
-#     High low 乖離率
-# ATR の計算ミスってた 5/31
+
+#       High low 乖離率
         x['d_HL'] = high_/low_
         df_atr = pd.DataFrame(index=high_.index)
         df_atr['high_low'] = high_ - low_
@@ -1203,10 +1219,9 @@ class MakeTrainData():
         tr = pd.DataFrame(index=open_.index)
         tr['TR'] = df_atr.max(axis=1)
 
-
+        # ATR
         x['ATR_short'] = tr['TR'].rolling(self.ma_short).mean()
         x['ATR_long'] =  tr['TR'].rolling(self.ma_long).mean()
-#         ATR乖離率
         x['d_ATR'] = x['ATR_short']/x['ATR_long']
         x['ATR_vecs5'] = (x['ATR_short'].diff(5)/1)
         x['ATR_vecs1'] = (x['ATR_short'].diff(1)/1)
@@ -1216,32 +1231,20 @@ class MakeTrainData():
         today_close = df_con['close']
         yesterday_close = df_con['close'].iloc[:-1]
         yesterday_close.index = df_con.index[1:]
-#         騰落率
-# 一度も使用されていなかったため, 削除
+#        騰落率
+#       一度も使用されていなかったため, 削除
         # x['RAF'] =  (today_close/yesterday_close -1)
-
-        
-#         coef_short tmp1
         x = x.iloc[self.ma_long:end_point]
         x_check = x
-#         この '4' は　std_l5 など, インデックスをずらす特徴量が, nanになってしまう分の日数を除くためのもの
-# yについても同様
+#        この '4' は　std_l5 など, インデックスをずらす特徴量が, nanになってしまう分の日数を除くためのもの
+        # yについても同様
         x_train = x.iloc[self.ma_short-1:int(len(x)*self.test_rate)]
         x_test  = x.iloc[int(len(x)*self.test_rate):]
 
 
         if not is_check:
-            for i in range(self.ma_long,end_point):
-                tommorow_close = self.df_con['close'].iloc[i+1]
-                today_close    = self.df_con['close'].iloc[i]
-                if tommorow_close>today_close:
-                    y.append(1)
-                else:
-                    y.append(0)
-        
             
-            y_train = y[self.ma_short-1:int(len(x)*self.test_rate)]
-            y_test  = y[int(len(x)*self.test_rate):]
+            y_train,y_test = self.make_y_data(x,self.df_con,end_point)
             return x_train, y_train, x_test, y_test
         
         
@@ -1251,14 +1254,69 @@ class MakeTrainData():
             
             return x_check,chart_
 
+
+    def make_y_data(self,x,df_con,end_point):
+        y = []
+        for i in range(self.ma_long,end_point):
+            tommorow_close = df_con['close'].iloc[i+1]
+            today_close    = df_con['close'].iloc[i]
+            if tommorow_close>today_close:
+                y.append(1)
+            else:
+                y.append(0)
+            
+        y_train = y[self.ma_short-1:int(len(x)*self.test_rate)]
+        y_test  = y[int(len(x)*self.test_rate):]
+        return y_train,y_test
+
+
+
+class MakeTrainData3(MakeTrainData):
+
+
+    def __init__(self,df_con,test_rate=0.8,alpha=0.5,beta=-0.4):
+        super(MakeTrainData3,self).__init__(df_con,test_rate=test_rate)
+        self.alpha = alpha
+        self.beta = beta
+
+
+    def make_y_data(self,x,df_con,end_point):
+        y = []
+        for i in range(self.ma_long,end_point):
+            tommorow_close = df_con['close'].iloc[i+1]
+            today_close    = df_con['close'].iloc[i]
+            change_rate = ((tommorow_close-today_close) / today_close) * 100
+            
+            # UP : 2
+            if change_rate > self.alpha:
+                y.append(2)
+            # DOWN : 0
+            elif change_rate < self.beta:
+                y.append(0)
+            # STAY : 1
+            else:
+                y.append(1)
+            
+        y_train = y[self.ma_short-1:int(len(x)*self.test_rate)]
+        y_test  = y[int(len(x)*self.test_rate):]
+        return y_train,y_test
+
+
+
 class LearnXGB():
     
     
-    def __init__(self):
+    def __init__(self, num_class=2):
         self.model = xgb.XGBClassifier()
         self.x_test = None
+        self.num_class = num_class
         plt.clf()
+        if num_class==2:
+            self.MK = MakeTrainData
+        elif num_class==3:
+            self.MK = MakeTrainData3
     
+
     def learn_xgb(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
         
@@ -1273,8 +1331,11 @@ class LearnXGB():
         print("---------------------")
         y_proba_train = xgb_model.predict_proba(x_train)[:,1]
         y_proba = xgb_model.predict_proba(x_test)[:,1]
-        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-        print('AUC test :',roc_auc_score(y_test,y_proba))
+
+        if self.num_class==2:
+            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+            print('AUC test :',roc_auc_score(y_test,y_proba))
+
         print(classification_report(np.array(y_test), hr_pred))
         _, ax = plt.subplots(figsize=(12, 10))
         xgb.plot_importance(xgb_model,ax=ax) 
@@ -1294,8 +1355,11 @@ class LearnXGB():
         print("---------------------")
         y_proba_train = xgb_model.predict_proba(x_train)[:,1]
         y_proba = xgb_model.predict_proba(x_test)[:,1]
-        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-        print('AUC test :',roc_auc_score(y_test,y_proba))
+
+        if self.num_class==2:
+            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+            print('AUC test :',roc_auc_score(y_test,y_proba))
+
         print(classification_report(np.array(y_test), hr_pred))
         _, ax = plt.subplots(figsize=(12, 10))
         xgb.plot_importance(xgb_model,ax=ax) 
@@ -1304,7 +1368,7 @@ class LearnXGB():
 
     def make_state(self,path_tpx,path_daw):
         df_con = self.make_df_con(path_tpx,path_daw)
-        mk = MakeTrainData(df_con)
+        mk = self.MK(df_con)
         x_check, chart_ = mk.make_data(is_check=True)
         state_ = self.model.predict_proba(x_check.astype(float))
         chart_ = df_con['close'].loc[x_check.index[0]:x_check.index[-1]]
@@ -1313,7 +1377,7 @@ class LearnXGB():
         
     def make_xgb_data(self, path_tpx, path_daw, test_rate=0.8):
         df_con = self.make_df_con(path_tpx,path_daw)
-        mk = MakeTrainData(df_con,test_rate=test_rate)
+        mk = self.MK(df_con,test_rate=test_rate)
         x_train, y_train, x_test, y_test = mk.make_data()
         return x_train,y_train,x_test,y_test
     
@@ -1331,10 +1395,10 @@ class LearnXGB():
         return df_con
     
     
-    def make_check_data(self, path_tpx, path_daw):
+    def for_ql_data(self, path_tpx, path_daw):
         df_con = self.make_df_con(path_tpx,path_daw)
 
-        mk = MakeTrainData(df_con)
+        mk = self.MK(df_con)
         x_check, chart_ = mk.make_data(is_check=True)
         state_ = self.model.predict_proba(x_check.astype(float))
 
@@ -1353,7 +1417,7 @@ class LearnXGB():
         xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,is_variable_strategy=is_valiable_strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
         self.xl = xl
         df_con = self.make_df_con(path_tpx,path_daw)
-        mk = MakeTrainData(df_con)
+        mk = self.MK(df_con)
         x_check, chart_ = mk.make_data(is_check=True)
         tomorrow_predict = self.model.predict_proba(x_check)
         label = self.get_tomorrow_label(tomorrow_predict,strategy, is_valiable_strategy)
@@ -1830,9 +1894,6 @@ class StrategyMaker():
         x_test = x_[x_.index.year==test_year]
         x_test = x_test.loc[y_test.index]
         self.model = xgb_pred(x_train, y_train, x_test, y_test)
-
-
-  
 
 class RandomSimulation(Simulation):
 
