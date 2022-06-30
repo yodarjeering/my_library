@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
+from sklearn.manifold import trustworthiness
 random.seed(777)
 import xgboost as xgb
 from sklearn.metrics import classification_report,roc_auc_score
@@ -348,18 +349,13 @@ class Simulation():
         return predict_proba, current_date
 
 
-    def buy(self,is_buy,is_cant_buy,cant_buy,df_con,x_check,i):
+    def buy(self,df_con,x_check,i):
 #   観測した始値が, 予測に反して上がっていた時, 買わない
-        if is_cant_buy:
-            cant_buy += 1
-            index_buy=-1
-            start_time=-1
-            is_bought = False
-            
         index_buy = df_con['close'].loc[x_check.index[i+1]]
         start_time = x_check.index[i+1]
         is_bought = True
-        return index_buy, start_time, cant_buy, is_bought
+
+        return index_buy, start_time, is_bought
 
 
     def sell(self,df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate):
@@ -373,7 +369,7 @@ class Simulation():
             pl.add_span(start_time,end_time)
         else:
             pass
-        self.hold_day = 0
+
         return prf, trade_count, is_bought
 
 
@@ -637,35 +633,8 @@ class XGBSimulation(Simulation):
         self.ma_short = 0
         self.is_bought = False
         # 20日以上 ホールドしたら, 自動的に売り
-        self.hold_day = 0
-        self.trigger_count = 0
         self.calc_func = self.calc_acc
         self.MK = MakeTrainData
-
-
-    # online 学習以外で使ってる
-    def eval_proba(self, x_test, y_test):
-        predict_proba = self.xgb_model.predict_proba(x_test.astype(float))
-        df = pd.DataFrame(columns = ['score','Up precision','Down precision','Up recall','Down recall','up_num','down_num'])
-        acc_dict = {'TU':0,'FU':0,'TD':0,'FD':0}
-         
-        for i in range(len(predict_proba)):
-            row = predict_proba[i]
-            label = np.argmax(row)
-            proba = row[label]
-            if proba > self.alpha:
-                if y_test[i]==label:
-                    if label==0:
-                        acc_dict['TD'] += 1
-                    else:
-                        acc_dict['TU'] += 1
-                else:
-                    if label==0:
-                        acc_dict['FD'] += 1
-                    else:
-                        acc_dict['FU'] += 1
-
-        return self.calc_accuracy(acc_dict,df)
         
 
     def simulate(self, path_tpx, path_daw, is_validate=False,strategy='normal',is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
@@ -680,10 +649,12 @@ class XGBSimulation(Simulation):
         index_buy = 0
         index_sell = 0
         prf = 0
+        hold_day = 0
         trade_count = 0
+        trigger_count = 0
         total_eval_price = 0
         cant_buy = 0 # is_observed=True としたことで買えなくなった取引の回数をカウント
-
+        is_trigger=False
         
         for i in range(length-1):
             
@@ -713,11 +684,11 @@ class XGBSimulation(Simulation):
 
             if strategy=='reverse':
                 is_buy  = (label==0 and prob>self.alpha)
-                is_sell = ((label==1 and prob>self.alpha) or self.hold_day >= 20)
+                is_sell = (label==1 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             elif strategy=='normal':
                 is_buy  = (label==1 and prob>self.alpha)
-                is_sell = ((label==0 and prob>self.alpha) or self.hold_day >= 20)
+                is_sell = (label==0 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
             else:
                 print("No such strategy.")
@@ -725,17 +696,22 @@ class XGBSimulation(Simulation):
 
             
             if not is_bought:
-                if is_buy:
-                    index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
-                if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
                     continue
-            else:
-                self.hold_day += 1
-                if self.hold_day>=20:
-                    self.trigger_count+=1
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
 
-                if is_sell:
+            else:
+                hold_day += 1
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger=True
+
+                if is_sell or is_trigger:
                     prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
                 else:
                     total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
                     
@@ -761,10 +737,7 @@ class XGBSimulation(Simulation):
             
         
         try:
-            if is_online:
-                df = self.calc_acc(acc_df, y_check)
-            else:
-                df = self.eval_proba(x_check,y_check)
+            df = self.calc_acc(acc_df, y_check)
             self.accuracy_df = df
             log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
             self.trade_log = log
@@ -774,7 +747,7 @@ class XGBSimulation(Simulation):
                 print("")
                 print(df)
                 print("")
-                print("trigger_count :",self.trigger_count)
+                print("trigger_count :",trigger_count)
                 pl.show()
         except:
             print("no trade")
@@ -782,7 +755,7 @@ class XGBSimulation(Simulation):
     def show_result(self, path_tpx,path_daw,strategy='normal'):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)  
         self.simulate(x_check,y_check,strategy)
-        
+
 class XGBSimulation2(XGBSimulation):
 
 
@@ -881,6 +854,9 @@ class XGBSimulation2(XGBSimulation):
         index_buy = 0
         index_sell = 0
         prf = 0
+        hold_day = 0
+        trigger_count = 0
+        is_trigger = False
         trade_count = 0
         total_eval_price = 0
         cant_buy = 0 # is_observed=True としたことで買えなくなった取引の回数をカウント
@@ -916,11 +892,11 @@ class XGBSimulation2(XGBSimulation):
 
             if strategy=='reverse':
                 is_buy  = (label==0 and prob>self.alpha)
-                is_sell = ((label==2 and prob>self.alpha) or self.hold_day >= 20)
+                is_sell = (label==2 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             elif strategy=='normal':
                 is_buy  = (label==2 and prob>self.alpha)
-                is_sell = ((label==0 and prob>self.alpha) or self.hold_day >= 20)
+                is_sell = (label==0 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
             else:
                 print("No such strategy.")
@@ -928,17 +904,22 @@ class XGBSimulation2(XGBSimulation):
 
             
             if not is_bought:
-                if is_buy:
-                    index_buy, start_time, cant_buy,is_bought = self.buy(is_buy,is_cant_buy,cant_buy,df_con,x_check,i)
-                if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
                     continue
-            else:
-                self.hold_day += 1
-                if self.hold_day>=20:
-                    self.trigger_count+=1
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
 
-                if is_sell:
+            else:
+                hold_day += 1
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger = trustworthiness
+
+                if is_sell or is_trigger:
                     prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
                 else:
                     total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
                     
@@ -974,10 +955,8 @@ class XGBSimulation2(XGBSimulation):
             print("")
             print(df)
             print("")
-            print("trigger_count :",self.trigger_count)
+            print("trigger_count :",trigger_count)
             pl.show()
-        # except:
-        #     print("no trade")
 
 
 class StrategymakerSimulation(XGBSimulation):
