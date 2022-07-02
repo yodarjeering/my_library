@@ -811,34 +811,34 @@ class XGBSimulation2(XGBSimulation):
         for idx, key in enumerate(acc_dict):
             denom += acc_dict[key]
         
-        # try:
-        TU = acc_dict['TU']
-        FUs = acc_dict['FUs']
-        FUd = acc_dict['FUd']
-        TS = acc_dict['TS']
-        FSu = acc_dict['FSu']
-        FSd = acc_dict['FSd']
-        TD = acc_dict['TD']
-        FDu = acc_dict['FDu']
-        FDs = acc_dict['FDs']
+        try:
+            TU = acc_dict['TU']
+            FUs = acc_dict['FUs']
+            FUd = acc_dict['FUd']
+            TS = acc_dict['TS']
+            FSu = acc_dict['FSu']
+            FSd = acc_dict['FSd']
+            TD = acc_dict['TD']
+            FDu = acc_dict['FDu']
+            FDs = acc_dict['FDs']
 
-        score = (TU + TD + TS)/(denom)
-        prec_u = TU/(TU + FUs + FUd)
-        prec_s = TS/(TS + FSu + FSd)
-        prec_d = TD/(TD + FDu + FDs)
-        recall_u = TU/(TU + FSu + FDu)
-        recall_s = TS/(TS + FUs + FDs)
-        recall_d = TD/(TD + FUd + FSd)
-        # recall の分母
-        up_num = TU+FSu+FDu
-        stay_num = TS+FUs+FDs
-        down_num = TD+FUd+FSd
-        col_list = [score,prec_u,prec_s,prec_d,recall_u,recall_s,recall_d,up_num,stay_num,down_num]
-        df.loc[0] = col_list
-        return df
-        # except:
-        #     print("division by zero")
-        #     return None
+            score = (TU + TD + TS)/(denom)
+            prec_u = TU/(TU + FUs + FUd)
+            prec_s = TS/(TS + FSu + FSd)
+            prec_d = TD/(TD + FDu + FDs)
+            recall_u = TU/(TU + FSu + FDu)
+            recall_s = TS/(TS + FUs + FDs)
+            recall_d = TD/(TD + FUd + FSd)
+            # recall の分母
+            up_num = TU+FSu+FDu
+            stay_num = TS+FUs+FDs
+            down_num = TD+FUd+FSd
+            col_list = [score,prec_u,prec_s,prec_d,recall_u,recall_s,recall_d,up_num,stay_num,down_num]
+            df.loc[0] = col_list
+            return df
+        except:
+            print("division by zero")
+            return None
 
 
 
@@ -1498,8 +1498,8 @@ class LearnXGB():
     
     
     def predict_tomorrow(self, path_tpx, path_daw, alpha=0.5, strategy='normal', is_online=False, is_valiable_strategy=False,start_year=2021,start_month=1,end_month=12,is_observed=False,is_validate=False):
-        xl = XGBSimulation(self.model,alpha=alpha)
-        xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,is_variable_strategy=is_valiable_strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed)
+        xl = XGBSimulation(self,alpha=alpha)
+        xl.simulate(path_tpx,path_daw,is_validate=is_validate,strategy=strategy,is_variable_strategy=is_valiable_strategy,start_year=start_year,start_month=start_month,end_month=end_month,is_observed=is_observed,is_online=is_online)
         self.xl = xl
         df_con = self.make_df_con(path_tpx,path_daw)
         mk = self.MK(df_con)
@@ -1553,8 +1553,9 @@ class LearnClustering(LearnXGB):
 
 
 
-    def make_x_data(self,close_,width=20,stride=5):
-        length = len(close_)
+    def make_x_data(self,close_,width=20,stride=5,test_rate=0.8):
+        length = int(len(close_)*test_rate)
+        close_ = close_.iloc[:length]
         close_tmp = standarize(close_)
         close_list = close_tmp.tolist()
 
@@ -1584,16 +1585,36 @@ class LearnClustering(LearnXGB):
         return wave_dict
 
 
-    def learn_clustering(self,path_tpx,path_daw,width=20,stride=5):
+    def learn_clustering(self,path_tpx,path_daw,width=20,stride=5,test_rate=0.8):
         df_con = self.make_df_con(path_tpx,path_daw)
         close_ = df_con['close']
-        x,_ = self.make_x_data(close_,width=width,stride=stride)
+        x,_ = self.make_x_data(close_,width=width,stride=stride,test_rate=test_rate)
         model = KMeans(n_clusters=self.n_cluster)
         model.fit(x)
         self.model = model
         y = model.labels_
         wave_dict = self.make_wave_dict(x,y,width)
         self.wave_dict = wave_dict
+
+
+    def learn_clustering2(self,close_,width=20,stride=5):
+        x,_ = self.make_x_data(close_,width=width,stride=stride,test_rate=1.0)
+        model = KMeans(n_clusters=self.n_cluster)
+        model.fit(x)
+        self.model = model
+        y = model.labels_
+        wave_dict = self.make_wave_dict(x,y,width)
+        self.wave_dict = wave_dict
+
+
+    def learn_clustering3(self,x,width=20,stride=5):
+        model = KMeans(n_clusters=self.n_cluster)
+        model.fit(x)
+        self.model = model
+        y = model.labels_
+        wave_dict = self.make_wave_dict(x,y,width)
+        self.wave_dict = wave_dict
+    
     
 
     def show_class_wave(self):
@@ -1605,25 +1626,25 @@ class LearnClustering(LearnXGB):
             plt.clf()
 
 
-    def predict(self,path_tpx,path_daw,stride=2):
+    def predict(self,path_tpx,path_daw,stride=2,test_rate=1.0):
         df_con = self.make_df_con(path_tpx,path_daw)
         close_ = df_con["close"]
-        x,z = self.make_x_data(close_,stride=stride)
+        x,z = self.make_x_data(close_,stride=stride,test_rate=test_rate)
         y_pred  = self.model.predict(x)
         return y_pred,z
 
 
-    def predict2(self,df_con,stride=2):
+    def predict2(self,df_con,stride=2,test_rate=1.0):
         close_ = df_con["close"]
-        x,z = self.make_x_data(close_,stride=stride)
+        x,z = self.make_x_data(close_,stride=stride,test_rate=test_rate)
         y_pred  = self.model.predict(x)
         return y_pred,z
 
     
-    def return_y_pred(self,path_tpx,path_daw,stride=2):
+    def return_y_pred(self,path_tpx,path_daw,stride=2,test_rate=1.0):
         df_con = self.make_df_con(path_tpx,path_daw)
         close_ = df_con["close"]
-        x,z = self.make_x_data(close_,stride=stride)
+        x,z = self.make_x_data(close_,stride=stride,test_rate=test_rate)
         y_pred  = self.model.predict(x)
         return y_pred
 
