@@ -524,17 +524,14 @@ class Simulation():
         self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
         return self.pr_log
 
-
-
 class TechnicalSimulation(Simulation):
     
     
-    def __init__(self,ma_short=5, ma_long=25, hold_day=5, year=2021):
+    def __init__(self,ma_short=5, ma_long=25, hold_day=5):
         super(TechnicalSimulation,self).__init__()
         self.ma_short = ma_short
         self.ma_long = ma_long
         self.hold_day = hold_day
-        self.year = year
         
         
     def process(self,df):
@@ -562,7 +559,7 @@ class TechnicalSimulation(Simulation):
         
         
     def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        _,_,_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month)
+        _,_,_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,is_validate=is_validate)
         df_process = self.process(df_con)
         prf_list = []
         is_bought = False
@@ -573,8 +570,9 @@ class TechnicalSimulation(Simulation):
         total_eval_price = 0
         short_line = df_process['ma_short']
         long_line = df_process['ma_long']
+        length = len(df_process)
   
-        for i in range(self.ma_short,len(df_process)-1):
+        for i in range(length-1):
             
             
             total_eval_price = prf
@@ -589,10 +587,8 @@ class TechnicalSimulation(Simulation):
                     hold_count_day = 0
                 else:
                     continue
-            
-            
-            else:
-                
+        
+            else:        
                 if self.is_sellable(short_line,long_line,i) or hold_count_day==self.hold_day:
                     index_cell = df_process['close'].iloc[i]
                     end_time = df_process.index[i]
@@ -604,7 +600,8 @@ class TechnicalSimulation(Simulation):
                     trade_count+=1
                     is_bought = False
                     hold_count_day = 0
-                    pl.add_span(start_time,end_time)
+                    if not is_validate:
+                        pl.add_span(start_time,end_time)
                 else:
                     hold_count_day+=1
                     eval_price = df_process['close'].iloc[i] - index_buy
@@ -612,13 +609,15 @@ class TechnicalSimulation(Simulation):
                     self.pr_log['eval_reward'].loc[df_process.index[i]] = total_eval_price
                     
         
-        if is_bought and hold_count_day>0:
+        if is_bought:
             end_time = df_process['close'].index[-1]
-            pl.add_span(start_time,end_time)
             eval_price = df_process['close'].iloc[-1] - index_buy
             prf_list.append(df_process['close'].iloc[-1] - index_buy)
+            prf += eval_price
             total_eval_price += eval_price
             self.pr_log['eval_reward'].loc[df_process.index[-1]] = total_eval_price
+            if not is_validate:
+                pl.add_span(start_time,end_time)
         
         prf_array = np.array(prf_list)
         log = self.return_trade_log(prf,trade_count,prf_array,0)
@@ -692,7 +691,6 @@ class XGBSimulation(Simulation):
 
         
         for i in range(length-1):
-            
             
             row = predict_proba[i]
             label = np.argmax(row)
