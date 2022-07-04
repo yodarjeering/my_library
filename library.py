@@ -210,6 +210,14 @@ def process_kawase(path_kawase,df_con):
     return df_kawase
 
 
+def cos_sim(vec1,vec2):
+    inner_product = vec1 @ vec2
+    vec1_norm = np.linalg.norm(vec1)
+    vec2_norm = np.linalg.norm(vec2)
+    norm_product = vec1_norm*vec2_norm
+    cos = inner_product/norm_product
+    return cos
+
 class DataFramePreProcessing():
 
     
@@ -916,7 +924,7 @@ class XGBSimulation(Simulation):
 class XGBSimulation2(XGBSimulation):
 
 
-    def __init__(self,lx,alpha=0.3):
+    def __init__(self,lx,alpha=0.33):
         super(XGBSimulation2,self).__init__(lx,alpha)
         self.MK = MakeTrainData3
 
@@ -1210,13 +1218,13 @@ class TechnicalSimulation(Simulation):
             print("")
             pl.show()    
 
+
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, spectrums, strategy_list, alpha=0.33):
+    def __init__(self, lx, Fstrategies, alpha=0.33):
         super(FFTSimulation,self).__init__(lx,alpha)
-        self.spectrums = spectrums
-        self.strategy_list = strategy_list
+        self.Fstrategies = Fstrategies
         
 
     def choose_strategy(self,x_spe):
@@ -1230,12 +1238,12 @@ class FFTSimulation(XGBSimulation2):
             strategy_list[1] : ('stay',alpha=0.3)
                              : 
         """
-        for spe in self.spectrums:
-            cos = cos_sim(spe,x_spe)
+        for fs in self.Fstrategies:
+            cos = cos_sim(fs.spectrum,x_spe)
             cos_sim_list.append(cos)
 
         max_index = np.argmax(np.array(cos_sim_list))
-        strategy = self.strategy_list[max_index]
+        strategy = self.Fstrategies[max_index].strategy
         return strategy
 
 
@@ -1270,7 +1278,7 @@ class FFTSimulation(XGBSimulation2):
     def make_spectrum(self,wave_vec):
         F = do_fft(wave_vec)
         spectrum = np.concatenate([F.real,F.imag])
-        # Amp = np.abs(F)
+        # spectrum = np.abs(F)
         return spectrum
 
 
@@ -1296,14 +1304,13 @@ class FFTSimulation(XGBSimulation2):
         cant_buy = 0
         buy_count = 0
         sell_count = 0
-        # strategy = 'stay'
 
         
         for i in range(length-1):
-            # x_ を FFTして最も好ましい戦略を返す関数
+
             time_ = df_con.index[i]
             x_spe = self.make_spectrum(x_dict[time_])
-            # pre_strategy = strategy
+
             if not is_bought:
                 strategy = self.choose_strategy(x_spe)
 
@@ -1401,8 +1408,9 @@ class FFTSimulation(XGBSimulation2):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
- 
+            
 
+    
 class LearnXGB():
     
     
@@ -1628,7 +1636,6 @@ class LearnClustering(LearnXGB):
         y = model.labels_
         wave_dict = self.make_wave_dict(x,y,width)
         self.wave_dict = wave_dict
-    
     
 
     def show_class_wave(self):
