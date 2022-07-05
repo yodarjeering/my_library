@@ -1578,13 +1578,13 @@ class LearnClustering(LearnXGB):
     def make_x_data(self,close_,width=20,stride=5,test_rate=0.8):
         length = int(len(close_)*test_rate)
         close_ = close_.iloc[:length]
-        close_tmp = standarize(close_)
-        close_list = close_tmp.tolist()
+        # close_ = standarize(close_)
+        # close_list = close_.tolist()
 
         x = []
         z = []
         for i in range(0,length-width,stride):
-            x.append(close_list[i:i+width])
+            x.append(standarize(close_.iloc[i:i+width]).tolist())
             z.append(close_.iloc[i:i+width])
         x = np.array(x)
         return x,z
