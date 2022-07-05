@@ -5,19 +5,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
-from sklearn.manifold import trustworthiness
 random.seed(777)
 import xgboost as xgb
 from sklearn.metrics import classification_report,roc_auc_score
-from sklearn.metrics import r2_score
-import copy
-import optuna
 from sklearn import tree
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import LinearRegression
 import statsmodels.api as sm
-import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn import preprocessing
@@ -592,7 +587,6 @@ class Simulation():
         self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
         return self.pr_log
 
-
 class XGBSimulation(Simulation):
     
     
@@ -1027,7 +1021,6 @@ class TechnicalSimulation(Simulation):
             print("")
             pl.show()    
 
-
 class FFTSimulation(XGBSimulation2):
 
 
@@ -1219,8 +1212,6 @@ class FFTSimulation(XGBSimulation2):
             # print("sell_count",sell_count)
             pl.show()
             
-
-    
 class LearnXGB():
     
     
@@ -1927,25 +1918,21 @@ class TPXSimulation(Simulation):
         super(TPXSimulation,self).__init__()
 
 
-    def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12):
-        df = self.make_df_con(path_tpx,path_daw)
-        x_check = self.return_split_df(df,start_year=start_year,end_year=end_year,start_month=start_month,end_month=end_month)
-        length = len(x_check)
-        pl = PlotTrade(x_check['close'],label='close')
+    def simulate(self,path_tpx,path_daw,is_validate=False,start_year=2021,end_year=2021,start_month=1,end_month=12,df_='None'):
+        _,_,_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,df_,is_validate)
+        length = len(df_con)
         prf_list = []
-        
-
-
-        start_time = x_check.index[0]
-        end_time = x_check.index[-1]
+        index_buy = 0
+        prf = 0
+        start_time = df_con.index[0]
+        end_time = df_con.index[-1]
         pl.add_span(start_time,end_time)
-        prf = x_check['close'].loc[x_check.index[-1]] - x_check['close'].loc[x_check.index[0]]
-        index_buy = x_check['close'].iloc[0]
-        prf_list_diff = x_check['close'].map(lambda x : x - index_buy).diff().fillna(0).tolist()
-        prf_list = x_check['close'].map(lambda x : x - index_buy).tolist()
-        prf_array = np.array(prf_list)
+        prf = df_con['close'].loc[df_con.index[-1]] - df_con['close'].loc[df_con.index[0]]
+        index_buy = df_con['close'].iloc[0]
+        prf_list_diff = df_con['close'].map(lambda x : x - index_buy).diff().fillna(0).tolist()
+        prf_list = df_con['close'].map(lambda x : x - index_buy).tolist()
         prf_array_diff = np.array(prf_list_diff)
-        self.pr_log = pd.DataFrame(index=x_check.index[:-1])
+        self.pr_log = pd.DataFrame(index=df_con.index[:-1])
         self.pr_log['reward'] = prf_list[:-1]
         self.pr_log['eval_reward'] = prf_list[:-1]
         log = self.return_trade_log(prf,length-1,prf_array_diff,0)
@@ -1955,6 +1942,7 @@ class TPXSimulation(Simulation):
             print(log)
             print("")
             pl.show()
+
 
 class StrategymakerSimulation(XGBSimulation):
 
