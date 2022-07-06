@@ -255,8 +255,8 @@ def do_fft(wave_vec):
 
 def make_spectrum(wave_vec):
     F = do_fft(wave_vec)
-    # spectrum = np.concatenate([F.real,F.imag])
-    spectrum = np.abs(F)**2
+    spectrum = np.concatenate([F.real,F.imag])
+    # spectrum = np.abs(F)**2
     return spectrum
 
 

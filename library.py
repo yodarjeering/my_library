@@ -1080,8 +1080,8 @@ class FFTSimulation(XGBSimulation2):
     
     def make_spectrum(self,wave_vec):
         F = self.do_fft(wave_vec)
-        # spectrum = np.concatenate([F.real,F.imag])
-        spectrum = np.abs(F)**2
+        spectrum = np.concatenate([F.real,F.imag])
+        # spectrum = np.abs(F)**2
         return spectrum
 
 
@@ -1926,7 +1926,8 @@ class TPXSimulation(Simulation):
         prf = 0
         start_time = df_con.index[0]
         end_time = df_con.index[-1]
-        pl.add_span(start_time,end_time)
+        if not is_validate:
+            pl.add_span(start_time,end_time)
         prf = df_con['close'].loc[df_con.index[-1]] - df_con['close'].loc[df_con.index[0]]
         index_buy = df_con['close'].iloc[0]
         prf_list_diff = df_con['close'].map(lambda x : x - index_buy).diff().fillna(0).tolist()
