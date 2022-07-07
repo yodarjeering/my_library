@@ -319,7 +319,7 @@ class MakeTrainData():
 
 class MakeTrainData3(MakeTrainData):
 
-
+# alpha=0.55 ?
     def __init__(self,df_con,test_rate=0.8,alpha=0.5,beta=-0.4):
         super(MakeTrainData3,self).__init__(df_con,test_rate=test_rate)
         self.alpha = alpha
@@ -1211,7 +1211,267 @@ class FFTSimulation(XGBSimulation2):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
+
+class FFTSimulation2(FFTSimulation):
+
+
+    def __init__(self,Fstrategies):
+        self.MK = MakeTrainData
+        self.Fstrategies = Fstrategies
+
+    
+    def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
+    is_observed=False):
+        
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,'None',is_validate)
+        self.x_check = x_check
+        x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
+        x_dict = self.make_x_dict(path_tpx,path_daw)
+        length = len(x_check)
+        prf_list = []
+        # predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        is_bought = False
+        index_buy = 0
+        index_sell = 0
+        prf = 0
+        hold_day = 0
+        trigger_count = 0
+        is_trigger = False
+        trade_count = 0
+        total_eval_price = 0
+        cant_buy = 0
+        buy_count = 0
+        sell_count = 0
+
+        
+        for i in range(length-1):
+
+            time_ = df_con.index[i]
+            x_spe = self.make_spectrum(x_dict[time_])
+
+            # if not is_bought:
+            strategy = self.choose_strategy(x_spe)
+
+            # row = predict_proba[i]
+            # label = np.argmax(row)
+            # prob = row[label]
+            total_eval_price = prf
+            self.pr_log['reward'].loc[df_con.index[i]] = prf 
+            self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+            tmp_date = x_tmp.index[i]   
+
+
+            if strategy=='normal':
+                is_buy  = True
+                is_sell = False
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+            elif strategy=='stay' :
+                is_buy = False
+                is_sell =  True
+                is_cant_buy = False
+
             
+
+            
+            if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
+                    continue
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
+                    buy_count += 1
+
+            else:
+                hold_day += 1
+                # is_triggerはあった方がいい
+                
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger = True
+
+                if is_sell or is_trigger:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
+                    sell_count += 1
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
+            
+            self.is_bought = is_bought
+                
+        
+        if is_bought:
+            index_sell = df_con['close'].loc[x_check.index[-1]] 
+            prf += index_sell - index_buy
+            prf_list.append(index_sell - index_buy)
+            end_time = x_check.index[-1]
+            trade_count+=1
+            if not is_validate:
+                pl.add_span(start_time,end_time)
+
+        
+        self.pr_log['reward'].loc[df_con.index[-1]] = prf 
+        self.pr_log['eval_reward'].loc[df_con.index[-1]] = total_eval_price
+        prf_array = np.array(prf_list)
+        # self.acc_df = acc_df
+        self.y_check = y_check
+            
+        
+        # try:
+        # df = self.calc_acc(acc_df, y_check)
+        # self.accuracy_df = df
+        log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            # print(df)
+            print("")
+            print("trigger_count :",trigger_count)
+            # print("buy_count",buy_count)
+            # print("sell_count",sell_count)
+            pl.show()
+
+
+class ClusterSimulation(FFTSimulation):
+
+
+    def __init__(self,lx,Cstrategies):
+        super(ClusterSimulation,self).__init__(lx,Cstrategies)
+
+    
+    def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
+    is_observed=False):
+        
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,'None',is_validate)
+        self.x_check = x_check
+        x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
+        x_dict = self.make_x_dict(path_tpx,path_daw)
+        length = len(x_check)
+        prf_list = []
+        predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        is_bought = False
+        index_buy = 0
+        index_sell = 0
+        prf = 0
+        hold_day = 0
+        trigger_count = 0
+        is_trigger = False
+        trade_count = 0
+        total_eval_price = 0
+        cant_buy = 0
+        buy_count = 0
+        sell_count = 0
+
+        
+        for i in range(length-1):
+
+            time_ = df_con.index[i]
+            x_spe = x_dict[time_]
+
+            if not is_bought:
+                strategy = self.choose_strategy(x_spe)
+
+            row = predict_proba[i]
+            label = np.argmax(row)
+            prob = row[label]
+            total_eval_price = prf
+            self.pr_log['reward'].loc[df_con.index[i]] = prf 
+            self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+            tmp_date = x_tmp.index[i]   
+
+            if is_online and current_date.month!=tmp_date.month:
+                predict_proba, current_date = self.learn_online(x_tmp,y_tmp,x_check,current_date,tmp_date)
+
+
+            if prob > self.alpha:
+                if label == 0:
+                    acc_df.iloc[i] = 0
+                elif label == 1:  
+                    acc_df.iloc[i] = 1
+                else: #  label==2
+                    acc_df.iloc[i] = 2
+
+            if strategy=='reverse':
+                is_buy  = (label==0 and prob>self.alpha)
+                is_sell = (label==2 and prob>self.alpha)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
+            elif strategy=='normal':
+                is_buy  = (label==2 and prob>self.alpha)
+                is_sell = (label==0 and prob>self.alpha)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+            elif strategy=='stay' :
+                is_buy = False
+                is_sell =  False
+                is_cant_buy = False
+
+            
+
+            
+            if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
+                    continue
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
+                    buy_count += 1
+
+            else:
+                hold_day += 1
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger = True
+
+                if is_sell or is_trigger:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
+                    sell_count += 1
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
+            
+            self.is_bought = is_bought
+                
+        
+        if is_bought:
+            index_sell = df_con['close'].loc[x_check.index[-1]] 
+            prf += index_sell - index_buy
+            prf_list.append(index_sell - index_buy)
+            end_time = x_check.index[-1]
+            trade_count+=1
+            if not is_validate:
+                pl.add_span(start_time,end_time)
+
+        
+        self.pr_log['reward'].loc[df_con.index[-1]] = prf 
+        self.pr_log['eval_reward'].loc[df_con.index[-1]] = total_eval_price
+        prf_array = np.array(prf_list)
+        self.acc_df = acc_df
+        self.y_check = y_check
+            
+        
+        # try:
+        df = self.calc_acc(acc_df, y_check)
+        self.accuracy_df = df
+        log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            print(df)
+            print("")
+            print("trigger_count :",trigger_count)
+            # print("buy_count",buy_count)
+            # print("sell_count",sell_count)
+            pl.show()
+
+
+
 class LearnXGB():
     
     
@@ -1476,8 +1736,8 @@ class LearnClustering(LearnXGB):
 class LearnTree(LearnXGB):
     
     
-    def __init__(self):
-        super(LearnTree,self).__init__()
+    def __init__(self,num_class=2):
+        super(LearnTree,self).__init__(num_class=num_class)
         self.model : tree.DecisionTreeClassifier() = None
         self.x_test = None
     
@@ -1489,37 +1749,39 @@ class LearnTree(LearnXGB):
         print("---------------------")
         y_proba_train = tree_model.predict_proba(x_train)[:,1]
         y_proba = tree_model.predict_proba(x_test)[:,1]
-        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-        print('AUC test :',roc_auc_score(y_test,y_proba))
+        if self.num_class==2:
+            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+            print('AUC test :',roc_auc_score(y_test,y_proba))
         print(classification_report(np.array(y_test), hr_pred))
         self.model = tree_model
         
 class LearnRandomForest(LearnXGB):
     
     
-    def __init__(self):
-        super(LearnRandomForest,self).__init__()
+    def __init__(self,num_class=2):
+        super(LearnRandomForest,self).__init__(num_class=num_class)
         self.model : RandomForestClassifier = None
         self.x_test = None
     
     
     def learn_forest(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
-        tree_model = self.model = RandomForestClassifier(max_depth=2, random_state=0)
+        tree_model = self.model = RandomForestClassifier(max_depth=2, random_state=0,n_estimators=15)
         hr_pred = tree_model.fit(x_train.astype(float), np.array(y_train)).predict(x_test.astype(float))
         print("---------------------")
         y_proba_train = tree_model.predict_proba(x_train)[:,1]
         y_proba = tree_model.predict_proba(x_test)[:,1]
-        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-        print('AUC test :',roc_auc_score(y_test,y_proba))
+        if self.num_class==2:
+            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+            print('AUC test :',roc_auc_score(y_test,y_proba))
         print(classification_report(np.array(y_test), hr_pred))
         self.model = tree_model
 
 class LearnLogisticRegressor(LearnXGB):
     
     
-    def __init__(self):
-        super(LearnLogisticRegressor,self).__init__()
+    def __init__(self,num_class):
+        super(LearnLogisticRegressor,self).__init__(num_class=num_class)
         self.model : LogisticRegression = None
         self.x_test = None
     
@@ -1531,8 +1793,9 @@ class LearnLogisticRegressor(LearnXGB):
         print("---------------------")
         y_proba_train = logistic_model.predict_proba(x_train)[:,1]
         y_proba = logistic_model.predict_proba(x_test)[:,1]
-        print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-        print('AUC test :',roc_auc_score(y_test,y_proba))
+        if self.num_class==2:
+            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+            print('AUC test :',roc_auc_score(y_test,y_proba))
         print(classification_report(np.array(y_test), hr_pred))
         self.model = logistic_model
 
