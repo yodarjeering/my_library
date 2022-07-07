@@ -1388,6 +1388,7 @@ class ClusterSimulation(FFTSimulation):
 
 
             if prob > self.alpha:
+            # if prob > 0.33:
                 if label == 0:
                     acc_df.iloc[i] = 0
                 elif label == 1:  
@@ -1398,10 +1399,14 @@ class ClusterSimulation(FFTSimulation):
             if strategy=='reverse':
                 is_buy  = (label==0 and prob>self.alpha)
                 is_sell = (label==2 and prob>self.alpha)
+                # is_buy  = (label==0 and prob>0.33)
+                # is_sell = (label==2 and prob>0.33)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             elif strategy=='normal':
                 is_buy  = (label==2 and prob>self.alpha)
                 is_sell = (label==0 and prob>self.alpha)
+                # is_buy  = (label==2 and prob>0.33)
+                # is_sell = (label==0 and prob>0.33)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
             elif strategy=='stay' :
                 is_buy = False
