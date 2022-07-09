@@ -356,13 +356,14 @@ class Simulation():
         self.trade_log = None
         self.pr_log = None
         self.MK = MakeTrainData
-
+        self.ma_short =  5
+        self.ma_long = 25
 
     def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None",is_validate=False):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
         y_ = pd.DataFrame(y_check)
         y_.index = x_check.index
-        df_con = self.return_df_con(path_tpx,path_daw)
+        df_con = self.make_df_con(path_tpx,path_daw)
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:]
@@ -478,15 +479,10 @@ class Simulation():
         df_con = self.make_df_con(path_tpx,path_daw)
         mk = self.MK(df_con,test_rate=1.0)
         x_check, y_check, _, _ = mk.make_data()
-        self.ma_short = mk.ma_short
-        self.ma_long = mk.ma_long
+        # self.ma_short = mk.ma_short
+        # self.ma_long = mk.ma_long
         return x_check, y_check
     
-    
-    def return_df_con(self,path_tpx,path_daw):
-        df_con = self.make_df_con(path_tpx,path_daw)
-        return df_con
-
 
     def calc_acc(self, acc_df, y_check):
         df = pd.DataFrame(columns = ['score','Up precision','Down precision','Up recall','Down recall','up_num','down_num'])
@@ -597,8 +593,8 @@ class XGBSimulation(Simulation):
         self.alpha = alpha
         self.acc_df = None
         self.y_check = None
-        self.ma_long = 0
-        self.ma_short = 0
+        self.ma_long = 25
+        self.ma_short = 5
         self.is_bought = False
         # 20日以上 ホールドしたら, 自動的に売り
         self.calc_func = self.calc_acc
@@ -1212,7 +1208,6 @@ class FFTSimulation(XGBSimulation2):
             # print("sell_count",sell_count)
             pl.show()
 
-
 class FFTSimulation2(FFTSimulation):
 
 
@@ -1334,7 +1329,6 @@ class FFTSimulation2(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
-
 
 class ClusterSimulation(FFTSimulation):
 
@@ -1474,6 +1468,141 @@ class ClusterSimulation(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
+class CeilSimulation(Simulation):
+
+
+    def __init__(self,alpha=0.8,beta=0.2):
+        super(CeilSimulation,self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.MK = MakeTrainData
+
+
+    def make_z_dict(self,path_tpx,path_daw,stride=1,test_rate=1.0):
+        df_con = self.make_df_con(path_tpx,path_daw)
+        z_dict = {}
+        lc = LearnClustering()
+        _, z_ = lc.make_x_data(df_con['close'],stride=stride,test_rate=test_rate)
+        length = len(z_)
+
+        for i in range(length):
+            time_ = z_[i].index[-1]
+            z_dict[time_] = z_[i]
+        
+        return z_dict
+
+
+    def calc_ceil(self,z_,close_):
+        L = z_.min()
+        H = z_.max()
+        ceil_ = (close_ - L)/(H - L)
+        return ceil_
+
+
+    def simulate(self,path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
+    is_observed=False):
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,'None',is_validate)
+        self.x_check = x_check
+        z_dict = self.make_z_dict(path_tpx,path_daw)
+        length = len(x_check)
+        prf_list = []
+        is_bought = False
+        index_buy = 0
+        index_sell = 0
+        prf = 0
+        hold_day = 0
+        trigger_count = 0
+        is_trigger = False
+        trade_count = 0
+        total_eval_price = 0
+        cant_buy = 0
+        buy_count = 0
+        sell_count = 0
+        ceil_list = []
+        self.x_check = x_check
+
+        for i in range(length-1):
+
+            time_ = df_con.index[i]
+            z_ = z_dict[time_]
+            close_ = df_con['close'].iloc[i]
+            ceil_ = self.calc_ceil(z_,close_)
+            ceil_list.append(ceil_)
+
+            total_eval_price = prf
+            self.pr_log['reward'].loc[df_con.index[i]] = prf 
+            self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+
+            # 底で買って, 天井で売る
+            is_buy  = ceil_<self.beta
+            is_sell = ceil_>self.alpha
+            is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+
+            
+            if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
+                    continue
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
+                    buy_count += 1
+
+            else:
+                hold_day += 1
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger = True
+
+                if is_sell or is_trigger:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
+                    sell_count += 1
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
+            
+            self.is_bought = is_bought
+                
+        
+        if is_bought:
+            index_sell = df_con['close'].loc[x_check.index[-1]] 
+            prf += index_sell - index_buy
+            prf_list.append(index_sell - index_buy)
+            end_time = x_check.index[-1]
+            trade_count+=1
+            if not is_validate:
+                pl.add_span(start_time,end_time)
+
+        
+        ceil_df = pd.DataFrame(ceil_list,columns={'ceil'},index=x_check.index[:-1])
+        self.ceil_df = ceil_df
+        self.pr_log['reward'].loc[df_con.index[-1]] = prf 
+        self.pr_log['eval_reward'].loc[df_con.index[-1]] = total_eval_price
+        prf_array = np.array(prf_list)
+        self.y_check = y_check
+        self.ceil_df = ceil_df
+        log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            print("trigger_count :",trigger_count)
+            pl.show()
+
+
+    def show_ceil_chart(self):
+        plt.clf()
+        chart_ = self.df_con['close']
+        ceil_df = self.ceil_df.copy()
+        scale = chart_.mean() * 0.9
+        _, ax = plt.subplots(figsize=(20, 6))
+        ax.plot(chart_.iloc[:-1],label='close')
+        ax.plot(ceil_df['ceil']*scale,label='ceil')
+        plt.grid()
+        plt.show()
 
 
 
@@ -2037,7 +2166,7 @@ class DawSimulation(Simulation):
         index_sell = 0
         prf = 0
         trade_count = 0
-        df_con = self.return_df_con(path_tpx,path_daw)
+        df_con = self.make_df_con(path_tpx,path_daw)
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:]
@@ -2230,7 +2359,7 @@ class StrategymakerSimulation(XGBSimulation):
         index_sell = 0
         prf = 0
         trade_count = 0
-        df_con = self.return_df_con(path_tpx,path_daw)
+        df_con = self.make_df_con(path_tpx,path_daw)
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:-1]

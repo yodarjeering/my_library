@@ -11,7 +11,8 @@ from sklearn.metrics import r2_score
 import copy
 import optuna
 import seaborn as sns
-from my_library.library import DataFramePreProcessing
+import pickle
+# from my_library.library import *
 
 
 def xgb_pred(x_train, y_train, x_test, y_test):
@@ -282,6 +283,16 @@ def make_easy_x(ng):
         x.append(lis_)
     x = np.array(x)
     return x
+
+
+def save_pickle(save_path,object_):
+    with open(save_path, mode="wb") as f:
+        pickle.dump(object_, f)
+
+def load_pickle(save_path):
+    with open(save_path, mode="rb") as f:
+        object_ = pickle.load(f)
+    return object_
 
 
 
