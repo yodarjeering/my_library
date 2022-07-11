@@ -256,11 +256,13 @@ def do_fft(wave_vec):
     Amp = np.abs(F)
     return F
 
-def make_spectrum(wave_vec):
+def make_spectrum(wave_vec,is_abs=False):
     F = do_fft(wave_vec)
-    spectrum = np.concatenate([F.real,F.imag])
-    # spectrum = np.abs(F)**2
-    return spectrum
+    if is_abs:
+        spectrum = np.abs(F)**2
+    else:
+        spectrum = np.concatenate([F.real,F.imag])
+    return standarize(spectrum)
 
 
 def cos_sim(vec1,vec2):
@@ -296,3 +298,5 @@ def load_pickle(save_path):
 
 
 
+def show_structure(xgb_model):
+    xgb.to_graphviz(xgb_model)

@@ -1027,15 +1027,6 @@ class FFTSimulation(XGBSimulation2):
 
     def choose_strategy(self,x_spe):
         cos_sim_list = []
-        """
-            spectrums[0] : normal_good のスペクトラム
-            spectrums[1] : normal_bad のスペクトラム
-                         :
-
-            strategy_list[0] : ('normal',alpha=0.3)
-            strategy_list[1] : ('stay',alpha=0.3)
-                             : 
-        """
         for fs in self.Fstrategies:
             cos = cos_sim(fs.spectrum,x_spe)
             cos_sim_list.append(cos)
@@ -1074,11 +1065,14 @@ class FFTSimulation(XGBSimulation2):
         return F
 
     
-    def make_spectrum(self,wave_vec):
+    def make_spectrum(self,wave_vec,is_abs=False):
         F = self.do_fft(wave_vec)
-        spectrum = np.concatenate([F.real,F.imag])
+        if is_abs:
+            spectrum = np.abs(F)**2
+        else:
+            spectrum = np.concatenate([F.real,F.imag])
         # spectrum = np.abs(F)**2
-        return spectrum
+        return standarize(spectrum)
 
 
     def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
@@ -1214,6 +1208,8 @@ class FFTSimulation2(FFTSimulation):
     def __init__(self,Fstrategies):
         self.MK = MakeTrainData
         self.Fstrategies = Fstrategies
+        self.ma_long =25
+        self.ma_short=5
 
     
     def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
@@ -1329,6 +1325,7 @@ class FFTSimulation2(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
 
 class ClusterSimulation(FFTSimulation):
 
