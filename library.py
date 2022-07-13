@@ -1020,9 +1020,11 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33):
+    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=False):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
+        self.is_abs = is_abs
+        
         
 
     def choose_strategy(self,x_spe):
@@ -1065,7 +1067,8 @@ class FFTSimulation(XGBSimulation2):
         return F
 
     
-    def make_spectrum(self,wave_vec,is_abs=False):
+    def make_spectrum(self,wave_vec):
+        is_abs = self.is_abs
         F = self.do_fft(wave_vec)
         if is_abs:
             spectrum = np.abs(F)**2
@@ -1755,7 +1758,7 @@ class LearnXGB():
 class LearnClustering(LearnXGB):
 
 
-    def __init__(self,n_cluster=8,width=20,stride=5,strategy_table=None):
+    def __init__(self,n_cluster=8,random_state=0,width=20,stride=5,strategy_table=None):
         super(LearnClustering,self).__init__()
         self.model : KMeans = None
         self.n_cluster = n_cluster
@@ -1764,6 +1767,7 @@ class LearnClustering(LearnXGB):
         self.n_label = None
         self.wave_dict = None
         self.strategy_table = strategy_table
+        self.random_state=random_state
 
 
 
@@ -1803,7 +1807,7 @@ class LearnClustering(LearnXGB):
         df_con = self.make_df_con(path_tpx,path_daw)
         close_ = df_con['close']
         x,_ = self.make_x_data(close_,width=width,stride=stride,test_rate=test_rate)
-        model = KMeans(n_clusters=self.n_cluster)
+        model = KMeans(n_clusters=self.n_cluster,random_state=self.random_state)
         model.fit(x)
         self.model = model
         y = model.labels_
