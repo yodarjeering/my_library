@@ -1088,6 +1088,7 @@ class FFTSimulation(XGBSimulation2):
         length = len(x_check)
         prf_list = []
         predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        self.predict_proba = predict_proba
         is_bought = False
         index_buy = 0
         index_sell = 0
@@ -1100,12 +1101,16 @@ class FFTSimulation(XGBSimulation2):
         cant_buy = 0
         buy_count = 0
         sell_count = 0
+        # for debug
+        self.strategies = []
+        self.spe_list = []
 
         
         for i in range(length-1):
 
             time_ = df_con.index[i]
             x_spe = self.make_spectrum(x_dict[time_])
+            self.spe_list.append(x_spe)
 
             if not is_bought:
                 strategy = self.choose_strategy(x_spe)
@@ -1131,14 +1136,17 @@ class FFTSimulation(XGBSimulation2):
                     acc_df.iloc[i] = 2
 
             if strategy=='reverse':
+                self.strategies.append(-1)
                 is_buy  = (label==0 and prob>self.alpha)
                 is_sell = (label==2 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             elif strategy=='normal':
+                self.strategies.append(1)
                 is_buy  = (label==2 and prob>self.alpha)
                 is_sell = (label==0 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
             elif strategy=='stay' :
+                self.strategies.append(0)
                 is_buy = False
                 is_sell =  False
                 is_cant_buy = False
@@ -1626,7 +1634,9 @@ class LearnXGB():
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 
             'n_estimators':16,
-            'max_depth':4}
+            'max_depth':4,
+            'random_state':0
+            }
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
@@ -1649,7 +1659,8 @@ class LearnXGB():
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 
                 'n_estimators':16,
-                'max_depth':4
+                'max_depth':4,
+                'random_state':0
                  }
 
         xgb_model = xgb.XGBClassifier(**param_dist)
