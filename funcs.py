@@ -300,3 +300,40 @@ def load_pickle(save_path):
 
 def show_structure(xgb_model):
     xgb.to_graphviz(xgb_model)
+
+
+def decode(spe):
+
+    length = len(spe)
+    mid = length//2
+
+    real_ = spe[:mid]
+    imag_ = spe[mid:]
+
+    c_list = []
+    for i in range(len(imag_)):
+        c_list.append(complex(0,imag_[i]))
+
+    c = np.array(c_list)
+    F = real_ + c
+    return F
+
+
+def get_gyosyu_df():
+    path_gyosyu = '/Users/rince/Desktop/StockPriceData/Gyosyu/'
+    FILE = glob.glob(path_gyosyu+'*.csv')
+    df_dict = {}
+    for file in FILE:
+        name = file.replace(path_gyosyu,'')[:-4]
+        df = pd.read_csv(file)
+        df = df.rename(columns={df.columns[0]:'nan',df.columns[1]:'nan',df.columns[2]:'nan',\
+                                    df.columns[3]:'day',df.columns[4]:'nan',df.columns[5]:'open',\
+                                    df.columns[6]:'high',df.columns[7]:'low',df.columns[8]:'close',\
+                                        df.columns[9]:'volume',})
+        df = df.drop('nan',axis=1)
+        df = df.drop(df.index[0])
+        df['day'] = pd.to_datetime(df['day'],format='%Y/%m/%d')
+        df.set_index('day',inplace=True)
+        df_dict[name] = df
+
+    return df_dict,FILE
