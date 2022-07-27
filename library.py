@@ -1020,11 +1020,11 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=False):
+    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=False,width=20):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.is_abs = is_abs
-        
+        self.width = width
         
 
     def choose_strategy(self,x_spe):
@@ -1043,7 +1043,7 @@ class FFTSimulation(XGBSimulation2):
         df_con = self.make_df_con(path_tpx,path_daw)
         x_dict = {}
         lc = LearnClustering()
-        x_, z_ = lc.make_x_data(df_con['close'],stride=1,test_rate=1.0)
+        x_, z_ = lc.make_x_data(df_con['close'],stride=1,test_rate=1.0,width=self.width)
         length = len(z_)
 
         for i in range(length):
@@ -1213,6 +1213,7 @@ class FFTSimulation(XGBSimulation2):
             # print("sell_count",sell_count)
             pl.show()
 
+
 class FFTSimulation2(FFTSimulation):
 
 
@@ -1341,8 +1342,8 @@ class FFTSimulation2(FFTSimulation):
 class ClusterSimulation(FFTSimulation):
 
 
-    def __init__(self,lx,Cstrategies):
-        super(ClusterSimulation,self).__init__(lx,Cstrategies)
+    def __init__(self,lx,Cstrategies,width=20):
+        super(ClusterSimulation,self).__init__(lx,Cstrategies,width=width)
 
     
     def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
@@ -1769,7 +1770,7 @@ class LearnXGB():
 class LearnClustering(LearnXGB):
 
 
-    def __init__(self,n_cluster=8,random_state=0,width=20,stride=5,strategy_table=None):
+    def __init__(self,n_cluster=8,random_state=0,width=40,stride=5,strategy_table=None):
         super(LearnClustering,self).__init__()
         self.model : KMeans = None
         self.n_cluster = n_cluster
