@@ -337,3 +337,30 @@ def get_gyosyu_df():
         df_dict[name] = df
 
     return df_dict,FILE
+
+def make_value_list(lx,start_year,end_year,alpha=0.34,width=20,stride=10):
+
+    lc_dummy = LearnClustering(width=width)
+    df_con = lc_dummy.make_df_con(path_tpx,path_daw)
+    df_con = df_con[df_con.index.year<=end_year]
+    df_con = df_con[df_con.index.year>=start_year]
+    x_,z_ = lc_dummy.make_x_data(df_con['close'],stride=stride,test_rate=1.0,width=width)
+    length = len(z_)
+    value_list = []
+
+    for i in range(length):
+        for strategy in ['normal','reverse']:
+            try:
+                xl = XGBSimulation2(lx,alpha=alpha)
+                xl.simulate(path_tpx,path_daw,strategy=strategy,is_validate=True,start_year=start_year,end_year=end_year,df_=z_[i])
+                
+                trade_log =  xl.trade_log
+                total_profit = trade_log['total_profit'].values[0]
+                stock_wave = z_[i]
+                vt = ValueTable(strategy,alpha,total_profit,trade_log,stock_wave)
+                value_list.append(vt)
+                
+            except:
+                continue
+
+    return value_list

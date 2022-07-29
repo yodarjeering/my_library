@@ -358,6 +358,8 @@ class Simulation():
         self.MK = MakeTrainData
         self.ma_short =  5
         self.ma_long = 25
+        self.wallet = 2500
+
 
     def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None",is_validate=False):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
@@ -551,8 +553,11 @@ class Simulation():
 
 
     def return_trade_log(self,prf,trade_count,prf_array,cant_buy):
+        
+        pr = (prf/self.wallet)*100
         log_dict = {
             'total_profit':prf,
+            'profit rate':pr,
             'trade_count':trade_count,
             'max_profit':prf_array.max(),
             'min_profit':prf_array.min(),
