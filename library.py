@@ -1025,7 +1025,7 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=False,width=20):
+    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=True,width=20):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.is_abs = is_abs
@@ -1109,6 +1109,8 @@ class FFTSimulation(XGBSimulation2):
         # for debug
         self.strategies = []
         self.spe_list = []
+        self.cnt_normal = 0
+        self.cnt_reverse = 0
 
         
         for i in range(length-1):
@@ -1145,11 +1147,13 @@ class FFTSimulation(XGBSimulation2):
                 is_buy  = (label==0 and prob>self.alpha)
                 is_sell = (label==2 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_reverse += 1
             elif strategy=='normal':
                 self.strategies.append(1)
                 is_buy  = (label==2 and prob>self.alpha)
                 is_sell = (label==0 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_normal += 1
             elif strategy=='stay' :
                 self.strategies.append(0)
                 is_buy = False
@@ -1217,6 +1221,7 @@ class FFTSimulation(XGBSimulation2):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
 
 
 class FFTSimulation2(FFTSimulation):

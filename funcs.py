@@ -12,7 +12,7 @@ import copy
 import optuna
 import seaborn as sns
 import pickle
-# from my_library.library import *
+from my_library.library import *
 
 
 def xgb_pred(x_train, y_train, x_test, y_test):
@@ -338,7 +338,7 @@ def get_gyosyu_df():
 
     return df_dict,FILE
 
-def make_value_list(lx,start_year,end_year,alpha=0.34,width=20,stride=10):
+def make_value_list(lx,start_year,end_year,path_tpx,path_daw,alpha=0.34,width=20,stride=10):
 
     lc_dummy = LearnClustering(width=width)
     df_con = lc_dummy.make_df_con(path_tpx,path_daw)
