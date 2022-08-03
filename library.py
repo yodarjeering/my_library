@@ -1223,7 +1223,6 @@ class FFTSimulation(XGBSimulation2):
             pl.show()
 
 
-
 class FFTSimulation2(FFTSimulation):
 
 
@@ -1347,6 +1346,36 @@ class FFTSimulation2(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
+class FFT_winSimulation(FFTSimulation):
+
+
+    def __init__(self, lx, Fstrategies, alpha=0.34, is_abs=True,width=40):
+        super(FFT_winSimulation,self).__init__(lx,Fstrategies,alpha,is_abs,width)
+        
+
+    def hanning(self,data, Fs):
+        han = signal.hann(Fs)                    # ハニング窓作成
+        acf = 1 / (sum(han) / Fs)                # 振幅補正係数(Amplitude Correction Factor)
+        # オーバーラップされた複数時間波形全てに窓関数をかける
+        data = data * han  # 窓関数をかける 
+        return data, acf
+
+
+    def do_fft(self,wave_vec):
+        N = len(wave_vec)            # サンプル数
+        dt = 1          # サンプリング間隔
+        t = np.arange(0, N*dt, dt) # 時間軸
+        freq = np.linspace(0, 1.0/dt, N) # 周波数軸
+
+        f, acf = self.hanning(wave_vec,N)
+        F = np.fft.fft(f)
+
+        # 振幅スペクトルを計算
+        Amp = acf*np.abs(F/(N/2))
+        return Amp[:N//2-1]
+
+
 
 
 class ClusterSimulation(FFTSimulation):
