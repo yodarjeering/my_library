@@ -358,6 +358,8 @@ class Simulation():
         self.MK = MakeTrainData
         self.ma_short =  5
         self.ma_long = 25
+        self.wallet = 2500
+
 
     def simulate_routine(self, path_tpx, path_daw,start_year=2021,end_year=2021,start_month=1,end_month=12,df_="None",is_validate=False):
         x_check, y_check = self.make_check_data(path_tpx,path_daw)
@@ -551,8 +553,11 @@ class Simulation():
 
 
     def return_trade_log(self,prf,trade_count,prf_array,cant_buy):
+        
+        pr = (prf/self.wallet)*100
         log_dict = {
             'total_profit':prf,
+            'profit rate':pr,
             'trade_count':trade_count,
             'max_profit':prf_array.max(),
             'min_profit':prf_array.min(),
@@ -1020,10 +1025,9 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33, is_abs=False,width=20):
+    def __init__(self, lx, Fstrategies, alpha=0.33,width=20):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
-        self.is_abs = is_abs
         self.width = width
         
 
@@ -1068,13 +1072,9 @@ class FFTSimulation(XGBSimulation2):
 
     
     def make_spectrum(self,wave_vec):
-        is_abs = self.is_abs
         F = self.do_fft(wave_vec)
-        if is_abs:
-            spectrum = np.abs(F)**2
-        else:
-            spectrum = np.concatenate([F.real,F.imag])
-        # spectrum = np.abs(F)**2
+        spectrum = np.abs(F)**2
+        spectrum = spectrum[:len(spectrum)//2]
         return standarize(spectrum)
 
 
@@ -1104,6 +1104,8 @@ class FFTSimulation(XGBSimulation2):
         # for debug
         self.strategies = []
         self.spe_list = []
+        self.cnt_normal = 0
+        self.cnt_reverse = 0
 
         
         for i in range(length-1):
@@ -1140,11 +1142,13 @@ class FFTSimulation(XGBSimulation2):
                 is_buy  = (label==0 and prob>self.alpha)
                 is_sell = (label==2 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_reverse += 1
             elif strategy=='normal':
                 self.strategies.append(1)
                 is_buy  = (label==2 and prob>self.alpha)
                 is_sell = (label==0 and prob>self.alpha)
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_normal += 1
             elif strategy=='stay' :
                 self.strategies.append(0)
                 is_buy = False
@@ -1337,6 +1341,36 @@ class FFTSimulation2(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
+
+class FFT_winSimulation(FFTSimulation):
+
+
+    def __init__(self, lx, Fstrategies, alpha=0.34, is_abs=True,width=40):
+        super(FFT_winSimulation,self).__init__(lx,Fstrategies,alpha,is_abs,width)
+        
+
+    def hanning(self,data, Fs):
+        han = signal.hann(Fs)                    # ハニング窓作成
+        acf = 1 / (sum(han) / Fs)                # 振幅補正係数(Amplitude Correction Factor)
+        # オーバーラップされた複数時間波形全てに窓関数をかける
+        data = data * han  # 窓関数をかける 
+        return data, acf
+
+
+    def do_fft(self,wave_vec):
+        N = len(wave_vec)            # サンプル数
+        dt = 1          # サンプリング間隔
+        t = np.arange(0, N*dt, dt) # 時間軸
+        freq = np.linspace(0, 1.0/dt, N) # 周波数軸
+
+        f, acf = self.hanning(wave_vec,N)
+        F = np.fft.fft(f)
+
+        # 振幅スペクトルを計算
+        Amp = acf*np.abs(F/(N/2))
+        return Amp[:N//2-1]
+
+
 
 
 class ClusterSimulation(FFTSimulation):
@@ -1662,7 +1696,7 @@ class LearnXGB():
                 'n_estimators':16,
                 'max_depth':4,
                 'random_state':0
-                 }
+                }
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))

@@ -70,7 +70,7 @@ def make_plot_data(reward_log, ma=5):
         print("Error.")
     
     return pd.DataFrame(reward_dict).T
-     
+    
 def easy_plot(df,xlabel='episode',ylabel='reward'):
     plt.subplots(figsize=(10, 6))
     plt.xlabel(xlabel)
@@ -256,12 +256,10 @@ def do_fft(wave_vec):
     Amp = np.abs(F)
     return F
 
-def make_spectrum(wave_vec,is_abs=False):
+def make_spectrum(wave_vec):
     F = do_fft(wave_vec)
-    if is_abs:
-        spectrum = np.abs(F)**2
-    else:
-        spectrum = np.concatenate([F.real,F.imag])
+    spectrum = np.abs(F)**2
+    spectrum = spectrum[:len(spectrum)//2]
     return standarize(spectrum)
 
 
@@ -337,3 +335,77 @@ def get_gyosyu_df():
         df_dict[name] = df
 
     return df_dict,FILE
+
+def make_value_list(lx,start_year,end_year,path_tpx,path_daw,alpha=0.34,width=20,stride=10):
+
+    lc_dummy = LearnClustering(width=width)
+    df_con = lc_dummy.make_df_con(path_tpx,path_daw)
+    df_con = df_con[df_con.index.year<=end_year]
+    df_con = df_con[df_con.index.year>=start_year]
+    x_,z_ = lc_dummy.make_x_data(df_con['close'],stride=stride,test_rate=1.0,width=width)
+    length = len(z_)
+    value_list = []
+
+    for i in range(length):
+        for strategy in ['normal','reverse']:
+            try:
+                xl = XGBSimulation2(lx,alpha=alpha)
+                xl.simulate(path_tpx,path_daw,strategy=strategy,is_validate=True,start_year=start_year,end_year=end_year,df_=z_[i])
+                
+                trade_log =  xl.trade_log
+                total_profit = trade_log['total_profit'].values[0]
+                stock_wave = z_[i]
+                vt = ValueTable(strategy,alpha,total_profit,trade_log,stock_wave)
+                value_list.append(vt)
+                
+            except:
+                continue
+
+    return value_list
+
+def return_ffs(start_year,end_year,save_path):
+
+    is_abs=True
+    log_dict = {}
+    cs_dict = {}
+    ffs_dict = {}
+    random_state=0
+
+    ffs_good = load_pickle(save_path)
+    alpha = 0.33
+    n_cluster = 1
+        
+    Fstrategies = []
+    Cstrategies = []
+    lc_rg = LearnClustering(n_cluster=n_cluster,random_state=random_state)
+    lc_rg.learn_clustering3(x_rg)
+    lc_rb = LearnClustering(n_cluster=n_cluster,random_state=random_state)
+    lc_rb.learn_clustering3(x_rb)
+    lc_ng = LearnClustering(n_cluster=n_cluster,random_state=random_state)
+    lc_ng.learn_clustering3(x_ng)
+    lc_nb = LearnClustering(n_cluster=n_cluster,random_state=random_state)
+    lc_nb.learn_clustering3(x_nb)
+
+    strategy_list = ['normal','stay','reverse','stay']
+
+    j=0
+    for lc in [lc_ng,lc_nb,lc_rg,lc_rb]:
+        
+        for _,key in enumerate(lc.wave_dict):
+            wave = lc.wave_dict[key]
+            spe = make_spectrum(wave,is_abs=is_abs)
+            strategy = strategy_list[j]
+            fs  = Fstrategy(strategy,alpha,spe)
+            cs = Fstrategy(strategy,alpha,wave)
+            Fstrategies.append(fs)
+            Cstrategies.append(cs)
+        j+=1
+
+
+    ffs = FFTSimulation(ffs_good.lx,Fstrategies,is_abs=is_abs)
+    ffs.simulate(path_tpx,path_daw,start_year=start_year,end_year=end_year,is_validate=False)
+    trade_log = ffs.trade_log
+    log_dict[n_cluster] = trade_log
+    ffs_dict[n_cluster] = ffs
+    return ffs,trade_log
+
