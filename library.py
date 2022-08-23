@@ -18,6 +18,7 @@ from sklearn.cluster import KMeans
 from sklearn import preprocessing
 from collections import namedtuple
 from my_library.funcs import *
+from scipy import signal
 ValueTable = namedtuple("ValueTable",["strategy","alpha","total_profit","trade_log","stock_wave"])
 Fstrategy = namedtuple("Fstrategy",["strategy","alpha","spectrum"])
 
@@ -1068,11 +1069,11 @@ class FFTSimulation(XGBSimulation2):
 
         # 振幅スペクトルを計算
         Amp = np.abs(F)
-        return F
+        return F, Amp
 
     
     def make_spectrum(self,wave_vec):
-        F = self.do_fft(wave_vec)
+        F,Amp = self.do_fft(wave_vec)
         spectrum = np.abs(F)**2
         spectrum = spectrum[:len(spectrum)//2]
         return standarize(spectrum)
@@ -1345,8 +1346,8 @@ class FFTSimulation2(FFTSimulation):
 class FFT_winSimulation(FFTSimulation):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.34, is_abs=True,width=40):
-        super(FFT_winSimulation,self).__init__(lx,Fstrategies,alpha,is_abs,width)
+    def __init__(self, lx, Fstrategies, alpha=0.34,width=40):
+        super(FFT_winSimulation,self).__init__(lx,Fstrategies,alpha,width)
         
 
     def hanning(self,data, Fs):
@@ -1368,7 +1369,13 @@ class FFT_winSimulation(FFTSimulation):
 
         # 振幅スペクトルを計算
         Amp = acf*np.abs(F/(N/2))
-        return Amp[:N//2-1]
+        return F, Amp
+
+    def make_spectrum(self,wave_vec):
+        F, Amp = self.do_fft(wave_vec)
+        spectrum = Amp**2
+        spectrum = spectrum[:len(spectrum)//2]
+        return standarize(spectrum)
 
 
 
