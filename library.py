@@ -41,7 +41,7 @@ class DataFramePreProcessing():
         df = df.rename(columns={df.columns[0]:'nan',df.columns[1]:'nan',df.columns[2]:'nan',\
                                     df.columns[3]:'day',df.columns[4]:'nan',df.columns[5]:d+'open',\
                                     df.columns[6]:d+'high',df.columns[7]:d+'low',df.columns[8]:d+'close',\
-                                       df.columns[9]:d+'volume',})
+                df.columns[9]:d+'volume',})
         df = df.drop('nan',axis=1)
         df = df.drop(df.index[0])
         df['day'] = pd.to_datetime(df['day'],format='%Y/%m/%d')
@@ -73,7 +73,7 @@ class PlotTrade():
         labels = self.ax.get_xticklabels()
         plt.setp(labels, rotation=15, fontsize=12)
         plt.show()
-         
+        
 class ValidatePlot(PlotTrade):
 
 
@@ -555,14 +555,23 @@ class Simulation():
 
     def return_trade_log(self,prf,trade_count,prf_array,cant_buy):
         
+        if trade_count==0:
+            max_profit = 0
+            min_profit = 0
+            mean_profit = 0
+        else:
+            max_profit = prf_array.max()
+            min_profit = prf_array.min()
+            mean_profit= prf_array.mean()
+            
         pr = (prf/self.wallet)*100
         log_dict = {
             'total_profit':prf,
             'profit rate':pr,
             'trade_count':trade_count,
-            'max_profit':prf_array.max(),
-            'min_profit':prf_array.min(),
-            'mean_profit':prf_array.mean(),
+            'max_profit':max_profit,
+            'min_profit':min_profit,
+            'mean_profit':mean_profit,
             'cant_buy_count':cant_buy
             }
         df = pd.DataFrame(log_dict,index=[1])
@@ -588,6 +597,7 @@ class Simulation():
         self.pr_log['reward'] = self.pr_log['reward'].map(lambda x: x/wallet)
         self.pr_log['eval_reward'] = self.pr_log['eval_reward'].map(lambda x: x/wallet)
         return self.pr_log
+
 
 class XGBSimulation(Simulation):
     
@@ -966,7 +976,7 @@ class TechnicalSimulation(Simulation):
         short_line = df_con['ma_short']
         long_line = df_con['ma_long']
         length = len(df_con)
-  
+
         for i in range(1,length):
             
             total_eval_price = prf
@@ -1022,6 +1032,7 @@ class TechnicalSimulation(Simulation):
             print(log)
             print("")
             pl.show()    
+
 
 class FFTSimulation(XGBSimulation2):
 
@@ -1669,7 +1680,7 @@ class LearnXGB():
             self.MK = MakeTrainData3
     
 
-    def learn_xgb(self, path_tpx, path_daw, test_rate=0.8, param_dist='None'):
+    def learn_xgb(self, path_tpx, path_daw, test_rate=0.8, param_dist='None',verbose=True):
         x_train,y_train,x_test,y_test = self.make_xgb_data(path_tpx,path_daw,test_rate)
         
         if param_dist=='None':
@@ -1682,21 +1693,23 @@ class LearnXGB():
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
-        print("---------------------")
+        
         y_proba_train = xgb_model.predict_proba(x_train)[:,1]
         y_proba = xgb_model.predict_proba(x_test)[:,1]
 
-        if self.num_class==2:
-            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-            print('AUC test :',roc_auc_score(y_test,y_proba))
+        if verbose:
+            print("---------------------")
+            if self.num_class==2:
+                print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+                print('AUC test :',roc_auc_score(y_test,y_proba))
 
-        print(classification_report(np.array(y_test), hr_pred))
-        _, ax = plt.subplots(figsize=(12, 10))
-        xgb.plot_importance(xgb_model,ax=ax) 
+            print(classification_report(np.array(y_test), hr_pred))
+            _, ax = plt.subplots(figsize=(12, 10))
+            xgb.plot_importance(xgb_model,ax=ax) 
         self.model = xgb_model
 
 
-    def learn_xgb2(self,x_train,y_train,x_test,y_test,param_dist='None'):
+    def learn_xgb2(self,x_train,y_train,x_test,y_test,param_dist='None',verbose=True):
         if param_dist=='None':
 #             Grid search で求めたパラメタ 2021/11/21
             param_dist = { 
@@ -1707,17 +1720,19 @@ class LearnXGB():
 
         xgb_model = xgb.XGBClassifier(**param_dist)
         hr_pred = xgb_model.fit(x_train.astype(float), np.array(y_train), eval_metric='logloss').predict(x_test.astype(float))
-        print("---------------------")
+        
         y_proba_train = xgb_model.predict_proba(x_train)[:,1]
         y_proba = xgb_model.predict_proba(x_test)[:,1]
 
-        if self.num_class==2:
-            print('AUC train:',roc_auc_score(y_train,y_proba_train))    
-            print('AUC test :',roc_auc_score(y_test,y_proba))
+        if verbose:
+            print("---------------------")
+            if self.num_class==2:
+                print('AUC train:',roc_auc_score(y_train,y_proba_train))    
+                print('AUC test :',roc_auc_score(y_test,y_proba))
 
-        print(classification_report(np.array(y_test), hr_pred))
-        _, ax = plt.subplots(figsize=(12, 10))
-        xgb.plot_importance(xgb_model,ax=ax) 
+            print(classification_report(np.array(y_test), hr_pred))
+            _, ax = plt.subplots(figsize=(12, 10))
+            xgb.plot_importance(xgb_model,ax=ax) 
         self.model = xgb_model
         
 
@@ -1808,6 +1823,7 @@ class LearnXGB():
 
         return label
 
+
 class LearnClustering(LearnXGB):
 
 
@@ -1827,8 +1843,7 @@ class LearnClustering(LearnXGB):
     def make_x_data(self,close_,width=20,stride=5,test_rate=0.8):
         length = int(len(close_)*test_rate)
         close_ = close_.iloc[:length]
-        # close_ = standarize(close_)
-        # close_list = close_.tolist()
+
 
         x = []
         z = []
@@ -1878,7 +1893,7 @@ class LearnClustering(LearnXGB):
         self.wave_dict = wave_dict
 
 
-    def learn_clustering3(self,x,width=20,stride=5):
+    def learn_clustering3(self,x,width=20):
         model = KMeans(n_clusters=self.n_cluster)
         model.fit(x)
         self.model = model
@@ -1920,6 +1935,7 @@ class LearnClustering(LearnXGB):
 
     def encode(self, strategy, alpha, wave_dict):
         pass
+
 
 class LearnTree(LearnXGB):
     
