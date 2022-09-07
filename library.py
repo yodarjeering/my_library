@@ -697,7 +697,7 @@ class XGBSimulation(Simulation):
                     
             
             self.is_bought = is_bought
-                  
+                
         
         if is_bought:
             index_sell = df_con['close'].loc[x_check.index[-1]] 
@@ -1037,11 +1037,12 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none'):
+    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=True):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.width = width
         self.window_type = window_type
+        self.is_high_pass = is_high_pass
 
 
     def choose_strategy(self,x_spe):
@@ -1106,6 +1107,10 @@ class FFTSimulation(XGBSimulation2):
             acf = 1
         
         F = np.fft.fft(f)
+        F = F[:len(F)//2]
+        # F の0~2日までの周波数を阻止
+        if self.is_high_pass:
+            F[:3] = 0
 
         # 振幅スペクトルを計算
         Amp = acf*np.abs(F/(N/2))
@@ -1114,7 +1119,6 @@ class FFTSimulation(XGBSimulation2):
     def make_spectrum(self,wave_vec):
         F, Amp = self.do_fft(wave_vec)
         spectrum = Amp**2
-        spectrum = spectrum[:len(spectrum)//2]
         return standarize(spectrum)
 
 
