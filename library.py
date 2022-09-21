@@ -21,6 +21,7 @@ from my_library.funcs import *
 from scipy import signal
 ValueTable = namedtuple("ValueTable",["strategy","alpha","total_profit","trade_log","stock_wave"])
 Fstrategy = namedtuple("Fstrategy",["strategy","alpha","spectrum"])
+from scipy import fftpack
 
 
 class DataFramePreProcessing():
@@ -1037,13 +1038,14 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=True):
+    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=True,is_ceps=False):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.width = width
         self.window_type = window_type
         self.is_high_pass = is_high_pass
-
+        self.is_ceps = is_ceps
+        
 
     def choose_strategy(self,x_spe):
         cos_sim_list = []
@@ -1120,7 +1122,23 @@ class FFTSimulation(XGBSimulation2):
         F, Amp = self.do_fft(wave_vec)
         spectrum = Amp**2
         return standarize(spectrum)
-
+    
+    def db(self, x, dBref):
+        delta = 10**-7
+        x += delta
+        y = 20 * np.log10(x / dBref)                      # リニア値をdB値に変換
+        return y    
+    
+    def make_cepstrum(self,spectrum):
+        spectrum += np.abs(np.min(spectrum))
+        spec_db = self.db(spectrum, 2e-5)                              # スペクトルを対数(dB)にする(0dB=20[μPa])
+        ceps_db = np.real(fftpack.ifft(spec_db))                # 対数スペクトルを逆フーリエ変換してケプストラム波形を作る
+        ceps_db_low = fftpack.fft(ceps_db) 
+        ceps_norm = norm(ceps_db_low)                           # ケプストラム波形を再度フーリエ変換してスペクトル包絡を得る
+        length = len(ceps_norm)
+        ceps_norm = np.abs(ceps_norm[:length//2])
+        return standarize(ceps_norm)
+        
 
     def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
     is_observed=False):
@@ -1156,6 +1174,8 @@ class FFTSimulation(XGBSimulation2):
 
             time_ = df_con.index[i]
             x_spe = self.make_spectrum(x_dict[time_])
+            if self.is_ceps:
+                x_spe = self.make_cepstrum(x_spe)
             self.spe_list.append(x_spe)
 
             if not is_bought:
@@ -1198,8 +1218,6 @@ class FFTSimulation(XGBSimulation2):
                 is_buy = False
                 is_sell =  False
                 is_cant_buy = False
-
-            
 
             
             if not is_bought:
