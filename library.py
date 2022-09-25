@@ -1038,13 +1038,15 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=True,is_ceps=False):
+    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=False,is_low_pass=True,is_ceps=False):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.width = width
         self.window_type = window_type
         self.is_high_pass = is_high_pass
+        self.is_low_pass = is_low_pass
         self.is_ceps = is_ceps
+        
         
 
     def choose_strategy(self,x_spe):
@@ -1091,12 +1093,47 @@ class FFTSimulation(XGBSimulation2):
         acf = 1 / (sum(bla) / Fs)               
         data = data * bla  # 窓関数をかける 
         return data, acf
+    
+    def butter_lowpass(self,lowcut, fs, order=4):
+        '''
+        バターワースローパスフィルタを設計する関数
+        '''
+        nyq = 0.5 * fs
+        low = lowcut / nyq
+        b, a = signal.butter(order, low, btype='low')
+        return b, a
+    
+    def butter_lowpass_filter(self, x, lowcut, fs, order=4):
+        '''データにローパスフィルタをかける関数
+        '''
+        b, a = self.butter_lowpass(lowcut, fs, order=order)
+        y = signal.filtfilt(b, a, x)
+        return y
+    
+    def butter_highpass(self, highcut, fs, order=4):
+        nyq = 0.5 * fs
+        high = highcut / nyq
+        b, a = signal.butter(order, high, btype = "high", analog = False)
+        return b, a
+
+    def butter_highpass_filter(self, x, highcut, fs, order=4):
+        b, a = self.butter_highpass(highcut, fs, order=order)
+        y = signal.filtfilt(b, a, x)
+        return y
+
 
     def do_fft(self,wave_vec):
         N = len(wave_vec)            # サンプル数
-        dt = 1          # サンプリング間隔
+        dt = 0.1          # サンプリング間隔
+        fs = 1/dt
         t = np.arange(0, N*dt, dt) # 時間軸
         freq = np.linspace(0, 1.0/dt, N) # 周波数軸
+        
+        if self.is_high_pass:
+            wave = self.butter_highpass_filter(wave,4,fs)
+        if self.is_low_pass:
+            wave = self.butter_lowpass_filter(wave,4,fs)
+        
 
         if self.window_type=='han':
             f, acf = self.hanning(wave_vec,N)
@@ -1107,13 +1144,12 @@ class FFTSimulation(XGBSimulation2):
         elif self.window_type=='none':
             f = wave_vec
             acf = 1
+        else:
+            print('Error')
+            return
         
         F = np.fft.fft(f)
         F = F[:len(F)//2]
-        # F の0~2日までの周波数を阻止
-        if self.is_high_pass:
-            F[:3] = 0
-
         # 振幅スペクトルを計算
         Amp = acf*np.abs(F/(N/2))
         return F, Amp
@@ -1403,9 +1439,6 @@ class FFTSimulation2(FFTSimulation):
             # print("buy_count",buy_count)
             # print("sell_count",sell_count)
             pl.show()
-
-
-
 
 
 class ClusterSimulation(FFTSimulation):
