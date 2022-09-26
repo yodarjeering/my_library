@@ -1038,7 +1038,7 @@ class TechnicalSimulation(Simulation):
 class FFTSimulation(XGBSimulation2):
 
 
-    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=False,is_low_pass=True,is_ceps=False):
+    def __init__(self, lx, Fstrategies, alpha=0.33,width=20,window_type='none',is_high_pass=False,is_low_pass=True,is_ceps=False,cut_off=3):
         super(FFTSimulation,self).__init__(lx,alpha)
         self.Fstrategies = Fstrategies
         self.width = width
@@ -1046,7 +1046,7 @@ class FFTSimulation(XGBSimulation2):
         self.is_high_pass = is_high_pass
         self.is_low_pass = is_low_pass
         self.is_ceps = is_ceps
-        
+        self.cut_off = cut_off
         
 
     def choose_strategy(self,x_spe):
@@ -1128,11 +1128,12 @@ class FFTSimulation(XGBSimulation2):
         fs = 1/dt
         t = np.arange(0, N*dt, dt) # 時間軸
         freq = np.linspace(0, 1.0/dt, N) # 周波数軸
+        cut_off = self.cut_off
         
         if self.is_high_pass:
-            wave = self.butter_highpass_filter(wave,4,fs)
+            wave_vec = self.butter_highpass_filter(wave_vec,cut_off,fs)
         if self.is_low_pass:
-            wave = self.butter_lowpass_filter(wave,4,fs)
+            wave_vec = self.butter_lowpass_filter(wave_vec,cut_off,fs)
         
 
         if self.window_type=='han':
