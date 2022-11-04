@@ -23,7 +23,6 @@ ValueTable = namedtuple("ValueTable",["strategy","alpha","total_profit","trade_l
 Fstrategy = namedtuple("Fstrategy",["strategy","alpha","spectrum"])
 from scipy import fftpack
 
-
 class DataFramePreProcessing():
 
     
@@ -119,7 +118,6 @@ class MakeTrainData():
         df_process['macd_signal_long'] = df_process['macd'].ewm(span=self.ma_long, adjust=False).mean()
         return df_process
                 
-   
         
     def make_data(self,is_check=False):
         x = pd.DataFrame(index=self.df_con.index)
@@ -371,7 +369,7 @@ class Simulation():
         df_con['ma_short'] = df_con['close'].rolling(self.ma_short).mean()
         df_con['ma_long']  = df_con['close'].rolling(self.ma_long).mean()
         df_con = df_con.iloc[self.ma_long:]
-       
+    
         # 任意の期間の df を入力しても対応できる
         if type(df_)==pd.DataFrame or type(df_)==pd.Series:
             start_ = df_.index[0]
@@ -1121,7 +1119,6 @@ class FFTSimulation(XGBSimulation2):
         y = signal.filtfilt(b, a, x)
         return y
 
-
     def do_fft(self,wave_vec):
         N = len(wave_vec)            # サンプル数
         dt = 0.1          # サンプリング間隔
@@ -1441,7 +1438,193 @@ class FFTSimulation2(FFTSimulation):
             # print("sell_count",sell_count)
             pl.show()
 
+class UpDownSimulation(Simulation):
+    
+    
+    def __init__(self,lx,Ustrategies,width=40,alpha=0.34):
+        super(UpDownSimulation,self).__init__()
+        self.lx = lx 
+        self.xgb_model = lx.model
+        self.Ustrategies = Ustrategies
+        self.width = width
+        self.alpha = alpha
+        self.ma_long = 25
+        self.ma_short = 5
+    
+    
+    def choose_strategy(self,wave,cut_off=3,order=3):
+        filtered_wave = butter_lowpass_filter(wave,cut_off,10,order=order)
+        diff_wave = np.diff(filtered_wave)
+        sum_diff = sum(diff_wave)
+        strategy = 'none'
 
+        # 右肩下がりの時
+        if sum_diff<=0:
+            strategy = 'stay'
+    
+        # 右肩上がりの時
+        else:
+            normal_wave = self.Ustrategies[0].spectrum
+            reverse_wave = self.Ustrategies[2].spectrum
+            
+            n_cos = cos_sim(normal_wave,wave)
+            r_cos = cos_sim(reverse_wave,wave)
+            if n_cos>=r_cos:
+                strategy = 'normal'
+            else:
+                strategy = 'reverse'
+                
+        return strategy
+    
+    def make_x_dict(self,path_tpx,path_daw):
+        df_con = self.make_df_con(path_tpx,path_daw)
+        x_dict = {}
+        lc = LearnClustering()
+        x_, z_ = lc.make_x_data(df_con['close'],stride=1,test_rate=1.0,width=self.width)
+        length = len(z_)
+
+        for i in range(length):
+            time_ = z_[i].index[-1]
+            x_dict[time_] = standarize(x_[i])
+        
+        return x_dict
+    
+
+    def simulate(self, path_tpx, path_daw, is_validate=False,is_online=False,start_year=2021,end_year=2021,start_month=1,end_month=12,
+        is_observed=False,cut_off=3,order=4):
+        
+        x_check,y_check,y_,df_con,pl = self.simulate_routine(path_tpx, path_daw,start_year,end_year,start_month,end_month,'None',is_validate)
+        self.x_check = x_check
+        x_tmp,y_tmp,current_date,acc_df = self.set_for_online(x_check,y_)
+        x_dict = self.make_x_dict(path_tpx,path_daw)
+        length = len(x_check)
+        prf_list = []
+        predict_proba = self.xgb_model.predict_proba(x_check.astype(float))
+        self.predict_proba = predict_proba
+        is_bought = False
+        index_buy = 0
+        index_sell = 0
+        prf = 0
+        hold_day = 0
+        trigger_count = 0
+        is_trigger = False
+        trade_count = 0
+        total_eval_price = 0
+        cant_buy = 0
+        buy_count = 0
+        sell_count = 0
+        # for debug
+        self.strategies = []
+        self.spe_list = []
+        self.cnt_normal = 0
+        self.cnt_reverse = 0
+        
+        for i in range(length-1):
+
+            time_ = df_con.index[i]
+            wave = x_dict[time_]
+
+            if not is_bought:
+                strategy = self.choose_strategy(wave,cut_off=cut_off,order=order)
+
+            row = predict_proba[i]
+            label = np.argmax(row)
+            prob = row[label]
+            total_eval_price = prf
+            self.pr_log['reward'].loc[df_con.index[i]] = prf 
+            self.pr_log['eval_reward'].loc[df_con.index[i]] = total_eval_price
+            tmp_date = x_tmp.index[i]   
+
+            if is_online and current_date.month!=tmp_date.month:
+                predict_proba, current_date = self.learn_online(x_tmp,y_tmp,x_check,current_date,tmp_date)
+
+
+            if prob > self.alpha:
+                if label == 0:
+                    acc_df.iloc[i] = 0
+                elif label == 1:  
+                    acc_df.iloc[i] = 1
+                else: #  label==2
+                    acc_df.iloc[i] = 2
+
+            if strategy=='reverse':
+                self.strategies.append(-1)
+                is_buy  = (label==0 and prob>self.alpha)
+                is_sell = (label==2 and prob>self.alpha)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_reverse += 1
+            elif strategy=='normal':
+                self.strategies.append(1)
+                is_buy  = (label==2 and prob>self.alpha)
+                is_sell = (label==0 and prob>self.alpha)
+                is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
+                if is_buy: self.cnt_normal += 1
+            elif strategy=='stay' :
+                self.strategies.append(0)
+                is_buy = False
+                is_sell =  False
+                is_cant_buy = False
+
+            
+            if not is_bought:
+                if is_cant_buy:
+                    cant_buy += 1
+                    continue
+                elif is_buy:
+                    index_buy, start_time, is_bought = self.buy(df_con,x_check,i)
+                    buy_count += 1
+
+            else:
+                hold_day += 1
+                if hold_day>=20:
+                    trigger_count+=1
+                    is_trigger = True
+
+                if is_sell or is_trigger:
+                    prf, trade_count, is_bought = self.sell(df_con,x_check,prf,index_buy,prf_list,trade_count,pl,start_time,i,is_validate)
+                    hold_day = 0
+                    is_trigger = False
+                    sell_count += 1
+                else:
+                    total_eval_price = self.hold(df_con,index_buy,total_eval_price,i)
+                    
+            
+            self.is_bought = is_bought
+                
+        
+        if is_bought:
+            index_sell = df_con['close'].loc[x_check.index[-1]] 
+            prf += index_sell - index_buy
+            prf_list.append(index_sell - index_buy)
+            end_time = x_check.index[-1]
+            trade_count+=1
+            if not is_validate:
+                pl.add_span(start_time,end_time)
+
+        
+        self.pr_log['reward'].loc[df_con.index[-1]] = prf 
+        self.pr_log['eval_reward'].loc[df_con.index[-1]] = total_eval_price
+        prf_array = np.array(prf_list)
+        self.acc_df = acc_df
+        self.y_check = y_check
+            
+        
+        # try:
+        df = self.calc_acc(acc_df, y_check)
+        self.accuracy_df = df
+        log = self.return_trade_log(prf,trade_count,prf_array,cant_buy)
+        self.trade_log = log
+
+        if not is_validate:
+            print(log)
+            print("")
+            print(df)
+            print("")
+            print("trigger_count :",trigger_count)
+            # print("buy_count",buy_count)
+            # print("sell_count",sell_count)
+            pl.show()
+            
 class ClusterSimulation(FFTSimulation):
 
 
@@ -1494,7 +1677,7 @@ class ClusterSimulation(FFTSimulation):
 
 
             if prob > self.alpha:
-            # if prob > 0.33:
+
                 if label == 0:
                     acc_df.iloc[i] = 0
                 elif label == 1:  
@@ -1505,14 +1688,12 @@ class ClusterSimulation(FFTSimulation):
             if strategy=='reverse':
                 is_buy  = (label==0 and prob>self.alpha)
                 is_sell = (label==2 and prob>self.alpha)
-                # is_buy  = (label==0 and prob>0.33)
-                # is_sell = (label==2 and prob>0.33)
+
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] > df_con['close'].loc[x_check.index[i]]))
             elif strategy=='normal':
                 is_buy  = (label==2 and prob>self.alpha)
                 is_sell = (label==0 and prob>self.alpha)
-                # is_buy  = (label==2 and prob>0.33)
-                # is_sell = (label==0 and prob>0.33)
+
                 is_cant_buy = (is_observed and (df_con['open'].loc[x_check.index[i+1]] < df_con['close'].loc[x_check.index[i]]))
             elif strategy=='stay' :
                 is_buy = False
@@ -1715,8 +1896,6 @@ class CeilSimulation(Simulation):
         ax.plot(ceil_df['ceil']*scale,label='ceil')
         plt.grid()
         plt.show()
-
-
 
 class LearnXGB():
     

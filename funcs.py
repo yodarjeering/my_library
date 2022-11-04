@@ -12,12 +12,17 @@ import copy
 import optuna
 import seaborn as sns
 import pickle
-
+from scipy import fftpack
+from scipy import signal
 
 
 def xgb_pred(x_train, y_train, x_test, y_test):
-    param_dist = {'objective':'binary:logistic', 'n_estimators':16,'use_label_encoder':False,
-                 'max_depth':4}
+    param_dist = {
+        'objective':'binary:logistic',
+        'n_estimators':16,
+        'use_label_encoder':False,
+        'max_depth':4
+        }
     
     param_def = {'objective':'binary:logistic','use_label_encoder':False}
     xgb_model = xgb.XGBClassifier(**param_dist)
@@ -318,7 +323,7 @@ def decode(spe):
 
 
 def get_gyosyu_df():
-    path_gyosyu = '/Users/rince/Desktop/StockPriceData/Gyosyu/'
+    path_gyosyu = '/Users/Owner/Desktop/StockPriceData/Gyosyu_encoded/'
     FILE = glob.glob(path_gyosyu+'*.csv')
     df_dict = {}
     for file in FILE:
@@ -484,3 +489,30 @@ def norm(spectrum):
     spectrum = spectrum / (N/2)
     return spectrum
 
+
+def butter_lowpass(lowcut, fs, order=4):
+    '''
+    バターワースローパスフィルタを設計する関数
+    '''
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    b, a = signal.butter(order, low, btype='low')
+    return b, a
+
+def butter_lowpass_filter(x, lowcut, fs, order=4):
+    '''データにローパスフィルタをかける関数
+    '''
+    b, a = butter_lowpass(lowcut, fs, order=order)
+    y = signal.filtfilt(b, a, x)
+    return y
+
+def butter_highpass( highcut, fs, order=4):
+    nyq = 0.5 * fs
+    high = highcut / nyq
+    b, a = signal.butter(order, high, btype = "high", analog = False)
+    return b, a
+
+def butter_highpass_filter(self, x, highcut, fs, order=4):
+    b, a = butter_highpass(highcut, fs, order=order)
+    y = signal.filtfilt(b, a, x)
+    return y
